@@ -2,6 +2,7 @@
 
 require_once "../config/database.php";
 require_once "../config/constants.php";
+require_once "../includes/functions.php";
 require_once "../includes/role-check.php";
 require_once "../includes/notification-functions.php";
 
@@ -200,6 +201,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             if ($stmt->execute()) {
 
+
                 /*
                  * NOTIFY DONOR
                  */
@@ -222,6 +224,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
                 );
 
+
+                /*
+                 * REDIRECT TO MY REQUESTS
+                 */
 
                 header(
                     "Location: my-requests.php"
