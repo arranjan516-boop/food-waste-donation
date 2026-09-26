@@ -6,9 +6,7 @@ require_once "config/database.php";
 require_once "config/constants.php";
 require_once "includes/functions.php";
 
-
 $error = "";
-
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
@@ -23,6 +21,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $password =
         $_POST["password"] ?? "";
+
+    $confirm_password =
+        $_POST["confirm_password"] ?? "";
 
     $role =
         $_POST["role"] ?? "recipient";
@@ -45,13 +46,50 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     ];
 
 
+    /*
+     * BASIC VALIDATION
+     */
+
     if (
         $name === "" ||
         !filter_var(
             $email,
             FILTER_VALIDATE_EMAIL
-        ) ||
-        strlen($password) < 6 ||
+        )
+    ) {
+
+        $error =
+            "Please enter a valid name and email.";
+
+    }
+
+    /*
+     * PASSWORD LENGTH
+     */
+
+    elseif (strlen($password) < 6) {
+
+        $error =
+            "Password must contain at least 6 characters.";
+
+    }
+
+    /*
+     * CONFIRM PASSWORD
+     */
+
+    elseif ($password !== $confirm_password) {
+
+        $error =
+            "Password and Confirm Password do not match.";
+
+    }
+
+    /*
+     * ROLE
+     */
+
+    elseif (
         !in_array(
             $role,
             $allowed_roles,
@@ -60,18 +98,23 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     ) {
 
         $error =
-            "Please enter valid details. Password must contain at least 6 characters.";
+            "Invalid account type.";
 
-    } else {
+    }
 
+    else {
 
-        /* CHECK EMAIL */
+        /*
+         * CHECK EMAIL
+         */
 
         $stmt = $conn->prepare(
+
             "SELECT user_id
              FROM users
              WHERE email = ?
              LIMIT 1"
+
         );
 
         $stmt->bind_param(
@@ -90,10 +133,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $error =
                 "This email is already registered.";
 
-        } else {
+        }
 
+        else {
 
-            /* PASSWORD */
+            /*
+             * HASH PASSWORD
+             */
 
             $hashed_password =
                 password_hash(
@@ -102,7 +148,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 );
 
 
-            /* INSERT USER */
+            /*
+             * INSERT USER
+             */
 
             $stmt = $conn->prepare(
 
@@ -155,7 +203,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $role
                 );
 
-            } else {
+            }
+
+            else {
 
                 $error =
                     "Registration failed. Please try again.";
@@ -196,8 +246,11 @@ require_once "includes/header.php";
 
     <form
         method="POST"
+        id="registerForm"
     >
 
+
+        <!-- NAME -->
 
         <div class="group">
 
@@ -214,6 +267,8 @@ require_once "includes/header.php";
         </div>
 
 
+        <!-- EMAIL -->
+
         <div class="group">
 
             <label>
@@ -229,6 +284,8 @@ require_once "includes/header.php";
         </div>
 
 
+        <!-- PHONE -->
+
         <div class="group">
 
             <label>
@@ -243,13 +300,18 @@ require_once "includes/header.php";
         </div>
 
 
+        <!-- ROLE -->
+
         <div class="group">
 
             <label>
                 I am a
             </label>
 
-            <select name="role" required>
+            <select
+                name="role"
+                required
+            >
 
                 <option value="recipient">
                     Recipient
@@ -272,6 +334,8 @@ require_once "includes/header.php";
         </div>
 
 
+        <!-- CITY -->
+
         <div class="group">
 
             <label>
@@ -281,10 +345,13 @@ require_once "includes/header.php";
             <input
                 type="text"
                 name="city"
+                placeholder="Example: Tumkur"
             >
 
         </div>
 
+
+        <!-- AREA -->
 
         <div class="group">
 
@@ -295,10 +362,13 @@ require_once "includes/header.php";
             <input
                 type="text"
                 name="area"
+                placeholder="Example: Tumkur Town"
             >
 
         </div>
 
+
+        <!-- PINCODE -->
 
         <div class="group">
 
@@ -314,17 +384,70 @@ require_once "includes/header.php";
         </div>
 
 
+        <!-- PASSWORD -->
+
         <div class="group">
 
             <label>
                 Password
             </label>
 
-            <input
-                type="password"
-                name="password"
-                required
-            >
+            <div class="password-box">
+
+                <input
+                    type="password"
+                    name="password"
+                    id="registerPassword"
+                    required
+                    minlength="6"
+                >
+
+                <button
+                    type="button"
+                    class="password-toggle"
+                    onclick="togglePassword(
+                        'registerPassword',
+                        this
+                    )"
+                >
+                    👁
+                </button>
+
+            </div>
+
+        </div>
+
+
+        <!-- CONFIRM PASSWORD -->
+
+        <div class="group">
+
+            <label>
+                Confirm Password
+            </label>
+
+            <div class="password-box">
+
+                <input
+                    type="password"
+                    name="confirm_password"
+                    id="confirmPassword"
+                    required
+                    minlength="6"
+                >
+
+                <button
+                    type="button"
+                    class="password-toggle"
+                    onclick="togglePassword(
+                        'confirmPassword',
+                        this
+                    )"
+                >
+                    👁
+                </button>
+
+            </div>
 
         </div>
 
@@ -333,9 +456,41 @@ require_once "includes/header.php";
             Register
         </button>
 
+
     </form>
 
 </div>
+
+
+<script>
+
+function togglePassword(
+    inputId,
+    button
+) {
+
+    const input =
+        document.getElementById(inputId);
+
+    if (input.type === "password") {
+
+        input.type = "text";
+
+        button.textContent = "🙈";
+
+    }
+
+    else {
+
+        input.type = "password";
+
+        button.textContent = "👁";
+
+    }
+
+}
+
+</script>
 
 
 <?php
