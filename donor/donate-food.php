@@ -228,7 +228,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             (
                 donor_id,
                 food_name,
-                category,
+                food_category,,
                 description,
                 quantity,
                 unit,
