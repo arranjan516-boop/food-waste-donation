@@ -6,302 +6,207 @@ require_once "../includes/role-check.php";
 
 require_role("donor");
 
+$message = "";
 $error = "";
-$success = "";
-
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
+    /* ---------------------------------------
+       Get form data
+    --------------------------------------- */
+
+    $donor_id = $_SESSION["user_id"];
+
     $food_name = trim($_POST["food_name"] ?? "");
-    $category = trim($_POST["category"] ?? "");
+    $food_category = trim($_POST["food_category"] ?? "");
     $description = trim($_POST["description"] ?? "");
     $quantity = (float)($_POST["quantity"] ?? 0);
     $unit = trim($_POST["unit"] ?? "");
-    $food_type = trim($_POST["food_type"] ?? "");
-    $people_served = (int)($_POST["people_served"] ?? 0);
-
     $city = trim($_POST["city"] ?? "");
     $area = trim($_POST["area"] ?? "");
-    $pincode = trim($_POST["pincode"] ?? "");
+    $delivery_preference = trim($_POST["delivery_preference"] ?? "any");
 
-    $delivery_preference =
-        $_POST["delivery_preference"] ?? "collector";
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | BASIC VALIDATION
-    |--------------------------------------------------------------------------
-    */
+    /* ---------------------------------------
+       Validation
+    --------------------------------------- */
 
     if ($food_name === "") {
-
         $error = "Please enter food name.";
-
     } elseif ($quantity <= 0) {
-
         $error = "Please enter a valid quantity.";
-
-    } elseif ($unit === "") {
-
-        $error = "Please select quantity unit.";
-
-    } elseif (!isset($_FILES["food_photo"])) {
-
-        $error = "Please select a food image.";
-
-    } elseif (
-        $_FILES["food_photo"]["error"]
-        !== UPLOAD_ERR_OK
-    ) {
-
-        $error = "There was a problem uploading the image.";
-
     }
 
+    /* ---------------------------------------
+       Food image upload
+    --------------------------------------- */
 
-    /*
-    |--------------------------------------------------------------------------
-    | IMAGE UPLOAD
-    |--------------------------------------------------------------------------
-    */
+    $food_photo = "";
 
-    if ($error === "") {
+    if ($error === "" && isset($_FILES["food_photo"])) {
 
-        $file = $_FILES["food_photo"];
+        if ($_FILES["food_photo"]["error"] === UPLOAD_ERR_OK) {
 
-        $file_name = $file["name"];
-        $file_tmp = $file["tmp_name"];
-        $file_size = $file["size"];
+            $original_name = $_FILES["food_photo"]["name"];
+            $tmp_name = $_FILES["food_photo"]["tmp_name"];
+            $file_size = $_FILES["food_photo"]["size"];
 
-
-        /*
-        | Get extension
-        */
-
-        $extension =
-            strtolower(
-                pathinfo(
-                    $file_name,
-                    PATHINFO_EXTENSION
-                )
+            $extension = strtolower(
+                pathinfo($original_name, PATHINFO_EXTENSION)
             );
 
+            $allowed_extensions = [
+                "jpg",
+                "jpeg",
+                "png",
+                "webp"
+            ];
 
-        /*
-        | Allowed extensions
-        */
+            /* Maximum 5 MB */
+            if ($file_size > 5 * 1024 * 1024) {
 
-        $allowed_extensions = [
-            "jpg",
-            "jpeg",
-            "png",
-            "webp"
-        ];
+                $error = "Image size must be less than 5 MB.";
 
+            } elseif (!in_array($extension, $allowed_extensions, true)) {
 
-        if (
-            !in_array(
-                $extension,
-                $allowed_extensions
-            )
-        ) {
+                $error = "Only JPG, JPEG, PNG and WEBP images are allowed.";
 
-            $error =
-                "Only JPG, JPEG, PNG and WEBP images are allowed.";
+            } elseif (getimagesize($tmp_name) === false) {
 
-        }
+                $error = "The uploaded file is not a valid image.";
 
+            } else {
 
-        /*
-        | Maximum size = 5 MB
-        */
+                /* ---------------------------------------
+                   Create upload folder
+                --------------------------------------- */
 
-        elseif ($file_size > 5 * 1024 * 1024) {
+                $upload_folder = __DIR__ . "/../uploads/food/";
 
-            $error =
-                "Image size must be less than 5 MB.";
+                if (!is_dir($upload_folder)) {
+                    mkdir($upload_folder, 0777, true);
+                }
 
-        }
+                /* ---------------------------------------
+                   Create unique image name
+                --------------------------------------- */
 
+                $food_photo =
+                    "food_" .
+                    time() .
+                    "_" .
+                    bin2hex(random_bytes(5)) .
+                    "." .
+                    $extension;
 
-        /*
-        | Check actual image
-        */
+                $destination = $upload_folder . $food_photo;
 
-        elseif (
-            getimagesize($file_tmp) === false
-        ) {
+                if (!move_uploaded_file($tmp_name, $destination)) {
 
-            $error =
-                "The selected file is not a valid image.";
+                    $error = "Failed to upload food image.";
 
-        }
-
-
-        /*
-        |--------------------------------------------------------------------------
-        | SAVE IMAGE
-        |--------------------------------------------------------------------------
-        */
-
-        if ($error === "") {
-
-            $upload_directory =
-                dirname(__DIR__)
-                . DIRECTORY_SEPARATOR
-                . "uploads"
-                . DIRECTORY_SEPARATOR
-                . "food"
-                . DIRECTORY_SEPARATOR;
-
-
-            /*
-            | Create folder if missing
-            */
-
-            if (
-                !is_dir($upload_directory)
-            ) {
-
-                mkdir(
-                    $upload_directory,
-                    0777,
-                    true
-                );
-
+                    $food_photo = "";
+                }
             }
-
-
-            /*
-            | Generate unique filename
-            */
-
-            $new_filename =
-                "food_"
-                . time()
-                . "_"
-                . bin2hex(
-                    random_bytes(4)
-                )
-                . "."
-                . $extension;
-
-
-            $destination =
-                $upload_directory
-                . $new_filename;
-
-
-            /*
-            | Move uploaded image
-            */
-
-            if (
-                !move_uploaded_file(
-                    $file_tmp,
-                    $destination
-                )
-            ) {
-
-                $error =
-                    "Unable to save the uploaded image.";
-
-            }
-
         }
-
     }
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | INSERT FOOD
-    |--------------------------------------------------------------------------
-    */
+    /* ---------------------------------------
+       Insert donation
+       
+       IMPORTANT:
+       Database uses food_category,
+       NOT category.
+    --------------------------------------- */
 
     if ($error === "") {
 
-        $stmt = $conn->prepare("
-
+        $sql = "
             INSERT INTO food_donations
             (
                 donor_id,
                 food_name,
-                food_category,,
+                food_category,
                 description,
                 quantity,
                 unit,
-                food_type,
-                people_served,
                 food_photo,
                 city,
                 area,
-                pincode,
-                delivery_preference,
-                status,
-                created_at
+                delivery_preference
             )
-
             VALUES
             (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, 'available', NOW()
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?,
+                ?
             )
+        ";
 
-        ");
+        $stmt = $conn->prepare($sql);
 
+        if (!$stmt) {
 
-        $stmt->bind_param(
-
-            "isssdssisssss",
-
-            $_SESSION["user_id"],
-            $food_name,
-            $category,
-            $description,
-            $quantity,
-            $unit,
-            $food_type,
-            $people_served,
-            $new_filename,
-            $city,
-            $area,
-            $pincode,
-            $delivery_preference
-
-        );
-
-
-        if ($stmt->execute()) {
-
-            $success =
-                "Food donation added successfully.";
+            $error = "Database error: " . $conn->error;
 
         } else {
 
-            /*
-            | If database insert fails,
-            | remove uploaded image.
-            */
+            $stmt->bind_param(
+                "isssdsssss",
+                $donor_id,
+                $food_name,
+                $food_category,
+                $description,
+                $quantity,
+                $unit,
+                $food_photo,
+                $city,
+                $area,
+                $delivery_preference
+            );
 
-            if (
-                file_exists($destination)
-            ) {
+            if ($stmt->execute()) {
 
-                unlink($destination);
+                $message = "Food donation posted successfully!";
 
+                /* Clear form values */
+                $food_name = "";
+                $food_category = "";
+                $description = "";
+                $quantity = "";
+                $unit = "";
+                $city = "";
+                $area = "";
+
+            } else {
+
+                /* Delete uploaded image if database insert fails */
+
+                if ($food_photo !== "") {
+
+                    $uploaded_file =
+                        __DIR__ .
+                        "/../uploads/food/" .
+                        $food_photo;
+
+                    if (file_exists($uploaded_file)) {
+                        unlink($uploaded_file);
+                    }
+                }
+
+                $error = "Failed to save donation: " . $stmt->error;
             }
 
-            $error =
-                "Food donation could not be added.";
-
+            $stmt->close();
         }
-
     }
-
 }
-
 
 $page_title = "Donate Food";
 
@@ -309,31 +214,23 @@ require_once "../includes/header.php";
 
 ?>
 
-
 <div class="form">
 
-    <h1>
-        🍱 Donate Food
-    </h1>
+    <h1>Donate Food</h1>
 
+    <?php if ($message !== ""): ?>
 
-    <?php if ($error !== ""): ?>
-
-        <div class="alert">
-
-            <?= e($error) ?>
-
+        <div class="alert success">
+            <?= htmlspecialchars($message) ?>
         </div>
 
     <?php endif; ?>
 
 
-    <?php if ($success !== ""): ?>
+    <?php if ($error !== ""): ?>
 
-        <div class="alert success">
-
-            <?= e($success) ?>
-
+        <div class="alert error">
+            <?= htmlspecialchars($error) ?>
         </div>
 
     <?php endif; ?>
@@ -344,66 +241,80 @@ require_once "../includes/header.php";
         enctype="multipart/form-data"
     >
 
-
-        <!-- FOOD NAME -->
+        <!-- Food Name -->
 
         <div class="group">
 
-            <label>
+            <label for="food_name">
                 Food Name
             </label>
 
             <input
                 type="text"
+                id="food_name"
                 name="food_name"
-                placeholder="Example: Vegetable Rice"
+                value="<?= htmlspecialchars($food_name ?? "") ?>"
+                placeholder="Example: Rice, Biryani, Idli"
                 required
             >
 
         </div>
 
 
-        <!-- CATEGORY -->
+        <!-- Food Category -->
 
         <div class="group">
 
-            <label>
+            <label for="food_category">
                 Food Category
             </label>
 
             <select
-                name="category"
+                id="food_category"
+                name="food_category"
             >
 
                 <option value="">
                     Select Category
                 </option>
 
-                <option value="Rice">
+                <option value="Rice"
+                    <?= (($food_category ?? "") === "Rice") ? "selected" : "" ?>>
                     Rice
                 </option>
 
-                <option value="Meals">
+                <option value="Biryani"
+                    <?= (($food_category ?? "") === "Biryani") ? "selected" : "" ?>>
+                    Biryani
+                </option>
+
+                <option value="Meals"
+                    <?= (($food_category ?? "") === "Meals") ? "selected" : "" ?>>
                     Meals
                 </option>
 
-                <option value="Snacks">
+                <option value="Breakfast"
+                    <?= (($food_category ?? "") === "Breakfast") ? "selected" : "" ?>>
+                    Breakfast
+                </option>
+
+                <option value="Snacks"
+                    <?= (($food_category ?? "") === "Snacks") ? "selected" : "" ?>>
                     Snacks
                 </option>
 
-                <option value="Fruits">
+                <option value="Fruits"
+                    <?= (($food_category ?? "") === "Fruits") ? "selected" : "" ?>>
                     Fruits
                 </option>
 
-                <option value="Vegetables">
+                <option value="Vegetables"
+                    <?= (($food_category ?? "") === "Vegetables") ? "selected" : "" ?>>
                     Vegetables
                 </option>
 
-                <option value="Bakery">
-                    Bakery
-                </option>
-
-                <option value="Other">
+                <option value="Other"
+                    <?= (($food_category ?? "") === "Other") ? "selected" : "" ?>>
                     Other
                 </option>
 
@@ -412,219 +323,153 @@ require_once "../includes/header.php";
         </div>
 
 
-        <!-- DESCRIPTION -->
+        <!-- Description -->
 
         <div class="group">
 
-            <label>
+            <label for="description">
                 Description
             </label>
 
             <textarea
+                id="description"
                 name="description"
+                rows="4"
                 placeholder="Describe the food..."
-            ></textarea>
+            ><?= htmlspecialchars($description ?? "") ?></textarea>
 
         </div>
 
 
-        <!-- QUANTITY -->
+        <!-- Quantity -->
 
         <div class="group">
 
-            <label>
+            <label for="quantity">
                 Quantity
             </label>
 
             <input
                 type="number"
+                id="quantity"
                 name="quantity"
                 step="0.01"
                 min="0.01"
+                value="<?= htmlspecialchars($quantity ?? "") ?>"
+                placeholder="Example: 20"
                 required
             >
 
         </div>
 
 
-        <!-- UNIT -->
+        <!-- Unit -->
 
         <div class="group">
 
-            <label>
+            <label for="unit">
                 Unit
             </label>
 
             <select
+                id="unit"
                 name="unit"
-                required
             >
 
                 <option value="">
                     Select Unit
                 </option>
 
-                <option value="kg">
-                    Kilogram (kg)
-                </option>
-
-                <option value="litre">
-                    Litre
-                </option>
-
-                <option value="packets">
-                    Packets
-                </option>
-
-                <option value="plates">
-                    Plates
-                </option>
-
-                <option value="pieces">
-                    Pieces
-                </option>
+                <option value="kg">Kilograms (kg)</option>
+                <option value="plates">Plates</option>
+                <option value="packets">Packets</option>
+                <option value="pieces">Pieces</option>
+                <option value="litres">Litres</option>
 
             </select>
 
         </div>
 
 
-        <!-- FOOD TYPE -->
+        <!-- Food Photo -->
 
         <div class="group">
 
-            <label>
-                Food Type
-            </label>
-
-            <select
-                name="food_type"
-            >
-
-                <option value="">
-                    Select Food Type
-                </option>
-
-                <option value="Vegetarian">
-                    Vegetarian
-                </option>
-
-                <option value="Non-Vegetarian">
-                    Non-Vegetarian
-                </option>
-
-            </select>
-
-        </div>
-
-
-        <!-- PEOPLE SERVED -->
-
-        <div class="group">
-
-            <label>
-                Approximate People Served
-            </label>
-
-            <input
-                type="number"
-                name="people_served"
-                min="1"
-            >
-
-        </div>
-
-
-        <!-- FOOD IMAGE -->
-
-        <div class="group">
-
-            <label>
+            <label for="food_photo">
                 Food Photo
             </label>
 
             <input
                 type="file"
+                id="food_photo"
                 name="food_photo"
                 accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                required
             >
 
             <small>
-                JPG, JPEG, PNG or WEBP — maximum 5 MB
+                JPG, JPEG, PNG or WEBP. Maximum 5 MB.
             </small>
 
         </div>
 
 
-        <!-- CITY -->
+        <!-- City -->
 
         <div class="group">
 
-            <label>
+            <label for="city">
                 City
             </label>
 
             <input
                 type="text"
+                id="city"
                 name="city"
+                value="<?= htmlspecialchars($city ?? "") ?>"
                 placeholder="Example: Tumkur"
-                required
             >
 
         </div>
 
 
-        <!-- AREA -->
+        <!-- Area -->
 
         <div class="group">
 
-            <label>
+            <label for="area">
                 Area
             </label>
 
             <input
                 type="text"
+                id="area"
                 name="area"
-                placeholder="Example: Tumkur Town"
-                required
+                value="<?= htmlspecialchars($area ?? "") ?>"
+                placeholder="Example: SIT"
             >
 
         </div>
 
 
-        <!-- PINCODE -->
+        <!-- Delivery Preference -->
 
         <div class="group">
 
-            <label>
-                Pincode
-            </label>
-
-            <input
-                type="text"
-                name="pincode"
-                maxlength="6"
-            >
-
-        </div>
-
-
-        <!-- DELIVERY -->
-
-        <div class="group">
-
-            <label>
+            <label for="delivery_preference">
                 Delivery Preference
             </label>
 
             <select
+                id="delivery_preference"
                 name="delivery_preference"
-                required
             >
 
-                <option value="self_delivery">
-                    I can deliver myself
+                <option value="any">
+                    Any Available Method
+                </option>
+
+                <option value="self">
+                    I can deliver the food myself
                 </option>
 
                 <option value="collector">
@@ -632,7 +477,7 @@ require_once "../includes/header.php";
                 </option>
 
                 <option value="ngo">
-                    Need an NGO
+                    Need NGO / Organization
                 </option>
 
             </select>
@@ -640,10 +485,11 @@ require_once "../includes/header.php";
         </div>
 
 
+        <!-- Submit -->
+
         <button type="submit">
             Donate Food
         </button>
-
 
     </form>
 
