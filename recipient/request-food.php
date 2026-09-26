@@ -3,6 +3,7 @@
 require_once "../config/database.php";
 require_once "../config/constants.php";
 require_once "../includes/role-check.php";
+require_once "../includes/notification-functions.php";
 
 require_role("recipient");
 
