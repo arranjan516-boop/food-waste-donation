@@ -279,3 +279,42 @@ footer {
     }
 
 }
+/* PASSWORD SHOW / HIDE */
+
+.password-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+
+.password-box input {
+    padding-right: 50px;
+}
+
+
+.password-toggle {
+    position: absolute;
+
+    right: 5px;
+    top: 50%;
+
+    transform: translateY(-50%);
+
+    background: transparent;
+
+    color: #333;
+
+    border: none;
+
+    padding: 8px;
+
+    cursor: pointer;
+
+    font-size: 18px;
+}
+
+
+.password-toggle:hover {
+    background: transparent;
+}
