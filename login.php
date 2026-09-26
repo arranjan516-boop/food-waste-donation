@@ -6,7 +6,6 @@ require_once "config/database.php";
 require_once "config/constants.php";
 require_once "includes/functions.php";
 
-
 $error = "";
 
 
@@ -27,8 +26,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             password,
             role,
             status
+
          FROM users
+
          WHERE email = ?
+
          LIMIT 1"
 
     );
@@ -72,7 +74,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $user["role"]
         );
 
-    } else {
+    }
+
+    else {
 
         $error =
             "Invalid email or password.";
@@ -110,6 +114,8 @@ require_once "includes/header.php";
     <form method="POST">
 
 
+        <!-- EMAIL -->
+
         <div class="group">
 
             <label>
@@ -125,17 +131,35 @@ require_once "includes/header.php";
         </div>
 
 
+        <!-- PASSWORD -->
+
         <div class="group">
 
             <label>
                 Password
             </label>
 
-            <input
-                type="password"
-                name="password"
-                required
-            >
+            <div class="password-box">
+
+                <input
+                    type="password"
+                    name="password"
+                    id="loginPassword"
+                    required
+                >
+
+                <button
+                    type="button"
+                    class="password-toggle"
+                    onclick="togglePassword(
+                        'loginPassword',
+                        this
+                    )"
+                >
+                    👁
+                </button>
+
+            </div>
 
         </div>
 
@@ -144,9 +168,52 @@ require_once "includes/header.php";
             Login
         </button>
 
+
     </form>
 
+
+    <p style="margin-top: 15px;">
+
+        Don't have an account?
+
+        <a href="register.php">
+            Register
+        </a>
+
+    </p>
+
 </div>
+
+
+<script>
+
+function togglePassword(
+    inputId,
+    button
+) {
+
+    const input =
+        document.getElementById(inputId);
+
+    if (input.type === "password") {
+
+        input.type = "text";
+
+        button.textContent = "🙈";
+
+    }
+
+    else {
+
+        input.type = "password";
+
+        button.textContent = "👁";
+
+    }
+
+}
+
+</script>
 
 
 <?php
