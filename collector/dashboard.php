@@ -8,7 +8,6 @@ require_once "../includes/notification-functions.php";
 
 require_role("collector");
 
-$user_id = $_SESSION["user_id"];
 $user_name = $_SESSION["name"] ?? "Collector";
 
 $page_title = "Collector Dashboard";
@@ -18,132 +17,99 @@ require_once "../includes/header.php";
 
 <div class="dashboard-container">
 
-    <!-- Welcome Section -->
     <div class="dashboard-header">
-        <div>
-            <h1>Collector Dashboard</h1>
+        <h1>Collector Dashboard</h1>
 
-            <p>
-                Welcome,
-                <strong><?= htmlspecialchars($user_name) ?></strong>
-            </p>
+        <p>
+            Welcome,
+            <strong><?= htmlspecialchars($user_name) ?></strong>
+        </p>
 
-            <p>
-                Help collect surplus food and deliver it to people who need it.
-            </p>
-        </div>
+        <p>
+            Help collect surplus food and deliver it to people who need it.
+        </p>
     </div>
 
 
-    <!-- Dashboard Cards -->
     <div class="dashboard-cards">
 
-        <!-- Available Tasks -->
         <div class="dashboard-card">
-
-            <div class="card-icon">
-                📦
-            </div>
+            <div class="card-icon">📦</div>
 
             <h2>Available Tasks</h2>
 
             <p>
-                View food collection requests available near you.
+                View food collection requests available for collectors.
             </p>
 
             <a href="available-tasks.php" class="dashboard-btn">
                 View Tasks
             </a>
-
         </div>
 
 
-        <!-- My Tasks -->
         <div class="dashboard-card">
-
-            <div class="card-icon">
-                🚚
-            </div>
+            <div class="card-icon">🚚</div>
 
             <h2>My Tasks</h2>
 
             <p>
-                View the collection and delivery tasks you have accepted.
+                View tasks that you have accepted.
             </p>
 
             <a href="my-tasks.php" class="dashboard-btn">
                 My Tasks
             </a>
-
         </div>
 
 
-        <!-- Active Delivery -->
         <div class="dashboard-card">
-
-            <div class="card-icon">
-                📍
-            </div>
+            <div class="card-icon">📍</div>
 
             <h2>Active Delivery</h2>
 
             <p>
-                Track your current pickup and delivery task.
+                Manage your current food collection and delivery.
             </p>
 
             <a href="active-delivery.php" class="dashboard-btn">
                 Active Delivery
             </a>
-
         </div>
 
 
-        <!-- Completed Tasks -->
         <div class="dashboard-card">
-
-            <div class="card-icon">
-                ✅
-            </div>
+            <div class="card-icon">✅</div>
 
             <h2>Completed Tasks</h2>
 
             <p>
-                View the food collection tasks you have completed.
+                View your completed delivery tasks.
             </p>
 
             <a href="completed-tasks.php" class="dashboard-btn">
-                Completed
+                Completed Tasks
             </a>
-
         </div>
 
 
-        <!-- Notifications -->
         <div class="dashboard-card">
-
-            <div class="card-icon">
-                🔔
-            </div>
+            <div class="card-icon">🔔</div>
 
             <h2>Notifications</h2>
 
             <p>
-                Check new food collection requests and updates.
+                View your latest notifications.
             </p>
 
             <a href="notifications.php" class="dashboard-btn">
                 Notifications
             </a>
-
         </div>
 
 
-        <!-- Profile -->
         <div class="dashboard-card">
-
-            <div class="card-icon">
-                👤
-            </div>
+            <div class="card-icon">👤</div>
 
             <h2>My Profile</h2>
 
@@ -152,37 +118,8 @@ require_once "../includes/header.php";
             </p>
 
             <a href="profile.php" class="dashboard-btn">
-                Profile
+                My Profile
             </a>
-
-        </div>
-
-    </div>
-
-
-    <!-- Quick Actions -->
-    <div class="dashboard-section">
-
-        <h2>Quick Actions</h2>
-
-        <div class="quick-actions">
-
-            <a href="available-tasks.php">
-                🔍 Find Available Tasks
-            </a>
-
-            <a href="my-tasks.php">
-                📋 View My Tasks
-            </a>
-
-            <a href="notifications.php">
-                🔔 Check Notifications
-            </a>
-
-            <a href="profile.php">
-                👤 View Profile
-            </a>
-
         </div>
 
     </div>
@@ -199,10 +136,10 @@ require_once "../includes/header.php";
 }
 
 .dashboard-header {
-    background: #f5f7fa;
     padding: 25px;
-    border-radius: 15px;
     margin-bottom: 25px;
+    border-radius: 15px;
+    background: #f5f7fa;
 }
 
 .dashboard-header h1 {
@@ -213,17 +150,15 @@ require_once "../includes/header.php";
     margin: 6px 0;
 }
 
-
 .dashboard-cards {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
 }
 
-
 .dashboard-card {
-    background: white;
     padding: 25px;
+    background: white;
     border-radius: 15px;
     box-shadow: 0 3px 12px rgba(0,0,0,0.08);
 }
@@ -245,8 +180,8 @@ require_once "../includes/header.php";
 
 .dashboard-btn {
     display: inline-block;
-    margin-top: 10px;
     padding: 10px 18px;
+    margin-top: 10px;
     background: #333;
     color: white;
     text-decoration: none;
@@ -257,57 +192,18 @@ require_once "../includes/header.php";
     opacity: 0.85;
 }
 
-
-.dashboard-section {
-    margin-top: 35px;
-}
-
-.quick-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 15px;
-    margin-top: 15px;
-}
-
-.quick-actions a {
-    padding: 12px 18px;
-    background: #f1f1f1;
-    color: #222;
-    text-decoration: none;
-    border-radius: 8px;
-}
-
-.quick-actions a:hover {
-    background: #ddd;
-}
-
-
 @media (max-width: 900px) {
-
     .dashboard-cards {
         grid-template-columns: repeat(2, 1fr);
     }
-
 }
 
-
 @media (max-width: 600px) {
-
-    .dashboard-container {
-        padding: 10px;
-    }
-
     .dashboard-cards {
         grid-template-columns: 1fr;
     }
-
-    .quick-actions {
-        flex-direction: column;
-    }
-
 }
 
 </style>
-
 
 <?php require_once "../includes/footer.php"; ?>
