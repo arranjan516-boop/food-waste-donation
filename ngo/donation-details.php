@@ -6,10 +6,11 @@ require_once "../includes/role-check.php";
 
 require_role("ngo");
 
-$donation_id = isset($_GET["id"]) ? intval($_GET["id"]) : 0;
+$donation_id = intval($_GET["id"] ?? 0);
 
 if ($donation_id <= 0) {
-    die("Invalid donation ID.");
+    header("Location: available-donations.php");
+    exit;
 }
 
 $stmt = $conn->prepare("
@@ -34,97 +35,169 @@ if ($result->num_rows == 0) {
 }
 
 $food = $result->fetch_assoc();
+
+$ngo_page_title = "Donation Details";
 ?>
 
 <!DOCTYPE html>
 <html>
+
 <head>
+
+    <meta charset="UTF-8">
+
     <title>Donation Details</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-    <link rel="stylesheet" href="../assets/css/food.css">
+
+    <link rel="stylesheet" href="../assets/css/ngo.css">
+
 </head>
 
-<body>
+<body class="ngo-body">
 
-<?php include "../includes/navbar.php"; ?>
+<?php include "../includes/ngo-layout.php"; ?>
 
-<div class="container">
+<main class="ngo-content">
 
-    <h1>Donation Details</h1>
+    <div class="ngo-detail-grid">
 
-    <?php if (!empty($food["food_photo"])): ?>
+        <!-- FOOD -->
 
-        <img
-            src="../uploads/food/<?php echo htmlspecialchars($food["food_photo"]); ?>"
-            class="food-details-image"
-            alt="Food Image"
-        >
+        <section class="ngo-section">
 
-    <?php endif; ?>
+            <?php if (!empty($food["food_photo"])): ?>
 
-    <h2>
-        <?php echo htmlspecialchars($food["food_name"]); ?>
-    </h2>
+                <img
+                    class="ngo-detail-image"
+                    src="../uploads/food/<?php echo htmlspecialchars($food["food_photo"]); ?>"
+                    alt="Food"
+                >
 
-    <p>
-        <strong>Category:</strong>
-        <?php echo htmlspecialchars($food["food_category"]); ?>
-    </p>
+            <?php else: ?>
 
-    <p>
-        <strong>Description:</strong>
-        <?php echo htmlspecialchars($food["description"]); ?>
-    </p>
+                <div class="ngo-food-placeholder" style="height:420px;border-radius:15px;">
+                    🍱
+                </div>
 
-    <p>
-        <strong>Quantity:</strong>
-        <?php echo htmlspecialchars($food["quantity"]); ?>
-        <?php echo htmlspecialchars($food["unit"]); ?>
-    </p>
+            <?php endif; ?>
 
-    <p>
-        <strong>Location:</strong>
-        <?php echo htmlspecialchars($food["city"]); ?>,
-        <?php echo htmlspecialchars($food["area"]); ?>
-    </p>
+        </section>
 
-    <p>
-        <strong>Delivery Preference:</strong>
-        <?php echo htmlspecialchars($food["delivery_preference"]); ?>
-    </p>
 
-    <hr>
+        <!-- DETAILS -->
 
-    <h2>Donor Details</h2>
+        <section class="ngo-section">
 
-    <p>
-        <strong>Name:</strong>
-        <?php echo htmlspecialchars($food["donor_name"]); ?>
-    </p>
+            <span class="ngo-category">
+                <?php echo htmlspecialchars($food["food_category"]); ?>
+            </span>
 
-    <p>
-        <strong>Phone:</strong>
-        <?php echo htmlspecialchars($food["donor_phone"]); ?>
-    </p>
+            <h1>
+                <?php echo htmlspecialchars($food["food_name"]); ?>
+            </h1>
 
-    <p>
-        <strong>Email:</strong>
-        <?php echo htmlspecialchars($food["donor_email"]); ?>
-    </p>
+            <p style="color:#6b7280;">
+                <?php echo htmlspecialchars($food["description"]); ?>
+            </p>
 
-    <br>
 
-    <a href="accept-donation.php?id=<?php echo $donation_id; ?>">
-        Accept Donation
-    </a>
+            <div class="ngo-detail-list">
 
-    &nbsp;
+                <div class="ngo-detail-row">
+                    <span>Quantity</span>
+                    <strong>
+                        <?php echo htmlspecialchars($food["quantity"]); ?>
+                        <?php echo htmlspecialchars($food["unit"]); ?>
+                    </strong>
+                </div>
 
-    <a href="reject-donation.php?id=<?php echo $donation_id; ?>">
-        Reject
-    </a>
+                <div class="ngo-detail-row">
+                    <span>City</span>
+                    <strong>
+                        <?php echo htmlspecialchars($food["city"]); ?>
+                    </strong>
+                </div>
+
+                <div class="ngo-detail-row">
+                    <span>Area</span>
+                    <strong>
+                        <?php echo htmlspecialchars($food["area"]); ?>
+                    </strong>
+                </div>
+
+                <div class="ngo-detail-row">
+                    <span>Delivery Preference</span>
+                    <strong>
+                        <?php echo htmlspecialchars($food["delivery_preference"]); ?>
+                    </strong>
+                </div>
+
+            </div>
+
+
+            <br>
+
+
+            <h3>Donor Information</h3>
+
+            <div class="ngo-detail-list">
+
+                <div class="ngo-detail-row">
+                    <span>Name</span>
+                    <strong>
+                        <?php echo htmlspecialchars($food["donor_name"]); ?>
+                    </strong>
+                </div>
+
+                <div class="ngo-detail-row">
+                    <span>Phone</span>
+                    <strong>
+                        <?php echo htmlspecialchars($food["donor_phone"]); ?>
+                    </strong>
+                </div>
+
+                <div class="ngo-detail-row">
+                    <span>Email</span>
+                    <strong>
+                        <?php echo htmlspecialchars($food["donor_email"]); ?>
+                    </strong>
+                </div>
+
+            </div>
+
+
+            <div class="ngo-action-box">
+
+                <a
+                    href="accept-donation.php?id=<?php echo $donation_id; ?>"
+                    class="ngo-btn ngo-btn-primary"
+                >
+                    ✓ Accept Donation
+                </a>
+
+                <a
+                    href="reject-donation.php?id=<?php echo $donation_id; ?>"
+                    class="ngo-btn ngo-btn-danger"
+                >
+                    ✕ Reject
+                </a>
+
+                <a
+                    href="available-donations.php"
+                    class="ngo-btn ngo-btn-light"
+                >
+                    ← Back
+                </a>
+
+            </div>
+
+        </section>
+
+    </div>
+
+</main>
 
 </div>
 
 </body>
+
 </html>
