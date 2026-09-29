@@ -1,16 +1,12 @@
 <?php
 
-/*
-|--------------------------------------------------------------------------
-| NGO Layout
-|--------------------------------------------------------------------------
-| Common sidebar + topbar for all NGO pages
-|--------------------------------------------------------------------------
-*/
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 if (!function_exists('ngo_header')) {
 
-    function ngo_header($page_title = "NGO Dashboard")
+    function ngo_header($page_title = 'NGO Dashboard')
     {
         $current_page = basename($_SERVER['PHP_SELF']);
 
@@ -26,23 +22,31 @@ if (!function_exists('ngo_header')) {
 
             <meta charset="UTF-8">
 
-            <meta
-                name="viewport"
-                content="width=device-width, initial-scale=1.0">
+            <meta name="viewport"
+                  content="width=device-width, initial-scale=1.0">
 
             <title>
                 <?= htmlspecialchars($page_title) ?> | FoodShare
             </title>
 
-            <!-- NGO CSS -->
-            <link
-                rel="stylesheet"
-                href="../assets/css/ngo.css">
+            <!-- Google Font -->
+            <link rel="preconnect"
+                  href="https://fonts.googleapis.com">
+
+            <link rel="preconnect"
+                  href="https://fonts.gstatic.com"
+                  crossorigin>
+
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+                  rel="stylesheet">
 
             <!-- Font Awesome -->
-            <link
-                rel="stylesheet"
-                href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+            <link rel="stylesheet"
+                  href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+            <!-- NGO CSS -->
+            <link rel="stylesheet"
+                  href="../assets/css/ngo.css">
 
         </head>
 
@@ -50,21 +54,21 @@ if (!function_exists('ngo_header')) {
 
         <div class="ngo-app">
 
-            <!-- ===================================================== -->
-            <!-- SIDEBAR -->
-            <!-- ===================================================== -->
+            <!-- ==========================================
+                 SIDEBAR
+            =========================================== -->
 
             <aside class="ngo-sidebar" id="ngoSidebar">
 
                 <!-- Logo -->
 
-                <div class="ngo-logo">
+                <div class="ngo-brand">
 
-                    <div class="ngo-logo-icon">
+                    <div class="ngo-brand-icon">
                         <i class="fa-solid fa-leaf"></i>
                     </div>
 
-                    <div>
+                    <div class="ngo-brand-text">
                         <h2>FoodShare</h2>
                         <span>NGO Portal</span>
                     </div>
@@ -72,17 +76,17 @@ if (!function_exists('ngo_header')) {
                 </div>
 
 
-                <!-- NGO Profile -->
+                <!-- User Profile -->
 
-                <div class="ngo-user">
+                <div class="ngo-sidebar-user">
 
-                    <div class="ngo-user-avatar">
+                    <div class="ngo-avatar">
 
-                        <i class="fa-solid fa-building-ngo"></i>
+                        <i class="fa-solid fa-building"></i>
 
                     </div>
 
-                    <div class="ngo-user-info">
+                    <div class="ngo-user-text">
 
                         <strong>
                             <?= htmlspecialchars($ngo_name) ?>
@@ -94,200 +98,193 @@ if (!function_exists('ngo_header')) {
 
                     </div>
 
+                    <i class="fa-solid fa-chevron-down ngo-user-arrow"></i>
+
                 </div>
 
 
                 <!-- Navigation -->
 
-                <nav class="ngo-navigation">
+                <div class="ngo-menu">
 
-                    <p class="ngo-nav-title">
+                    <div class="ngo-menu-label">
                         MAIN MENU
-                    </p>
+                    </div>
 
 
-                    <!-- Dashboard -->
+                    <a href="dashboard.php"
+                       class="ngo-menu-item <?= $current_page == 'dashboard.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="dashboard.php"
-                        class="ngo-nav-link <?= $current_page === 'dashboard.php' ? 'active' : '' ?>">
-
-                        <i class="fa-solid fa-chart-pie"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-solid fa-house"></i>
+                        </span>
 
                         <span>Dashboard</span>
 
                     </a>
 
 
-                    <!-- Available Donations -->
+                    <a href="available-donations.php"
+                       class="ngo-menu-item <?= $current_page == 'available-donations.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="available-donations.php"
-                        class="ngo-nav-link <?= $current_page === 'available-donations.php' ? 'active' : '' ?>">
-
-                        <i class="fa-solid fa-bowl-food"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-solid fa-utensils"></i>
+                        </span>
 
                         <span>Available Donations</span>
 
                     </a>
 
 
-                    <!-- My Donations -->
+                    <a href="my-donations.php"
+                       class="ngo-menu-item <?= $current_page == 'my-donations.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="my-donations.php"
-                        class="ngo-nav-link <?= $current_page === 'my-donations.php' ? 'active' : '' ?>">
-
-                        <i class="fa-solid fa-box-open"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-solid fa-box-open"></i>
+                        </span>
 
                         <span>My Donations</span>
 
                     </a>
 
 
-                    <!-- Pickup Schedule -->
+                    <a href="pickup-schedule.php"
+                       class="ngo-menu-item <?= $current_page == 'pickup-schedule.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="pickup-schedule.php"
-                        class="ngo-nav-link <?= $current_page === 'pickup-schedule.php' ? 'active' : '' ?>">
-
-                        <i class="fa-solid fa-calendar-days"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-solid fa-calendar-check"></i>
+                        </span>
 
                         <span>Pickup Schedule</span>
 
                     </a>
 
 
-                    <!-- Collection Status -->
+                    <a href="collection-status.php"
+                       class="ngo-menu-item <?= $current_page == 'collection-status.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="collection-status.php"
-                        class="ngo-nav-link <?= $current_page === 'collection-status.php' ? 'active' : '' ?>">
-
-                        <i class="fa-solid fa-truck"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-solid fa-truck"></i>
+                        </span>
 
                         <span>Collection Status</span>
 
                     </a>
 
 
-                    <!-- Distribution -->
+                    <a href="distribution.php"
+                       class="ngo-menu-item <?= $current_page == 'distribution.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="distribution.php"
-                        class="ngo-nav-link <?= $current_page === 'distribution.php' ? 'active' : '' ?>">
-
-                        <i class="fa-solid fa-hand-holding-heart"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-solid fa-hand-holding-heart"></i>
+                        </span>
 
                         <span>Distribution</span>
 
                     </a>
 
 
-                    <!-- Completed -->
+                    <a href="completed-donations.php"
+                       class="ngo-menu-item <?= $current_page == 'completed-donations.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="completed-donations.php"
-                        class="ngo-nav-link <?= $current_page === 'completed-donations.php' ? 'active' : '' ?>">
-
-                        <i class="fa-solid fa-circle-check"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-solid fa-circle-check"></i>
+                        </span>
 
                         <span>Completed</span>
 
                     </a>
 
 
-                    <p class="ngo-nav-title">
+                    <div class="ngo-menu-label ngo-account-label">
                         ACCOUNT
-                    </p>
+                    </div>
 
 
-                    <!-- Notifications -->
+                    <a href="notifications.php"
+                       class="ngo-menu-item <?= $current_page == 'notifications.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="notifications.php"
-                        class="ngo-nav-link <?= $current_page === 'notifications.php' ? 'active' : '' ?>">
-
-                        <i class="fa-regular fa-bell"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-regular fa-bell"></i>
+                        </span>
 
                         <span>Notifications</span>
+
+                        <span class="ngo-notification-count">
+                            3
+                        </span>
 
                     </a>
 
 
-                    <!-- History -->
+                    <a href="history.php"
+                       class="ngo-menu-item <?= $current_page == 'history.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="history.php"
-                        class="ngo-nav-link <?= $current_page === 'history.php' ? 'active' : '' ?>">
-
-                        <i class="fa-solid fa-clock-rotate-left"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-solid fa-clock-rotate-left"></i>
+                        </span>
 
                         <span>History</span>
 
                     </a>
 
 
-                    <!-- Feedback -->
+                    <a href="feedback.php"
+                       class="ngo-menu-item <?= $current_page == 'feedback.php' ? 'active' : '' ?>">
 
-                    <a
-                        href="feedback.php"
-                        class="ngo-nav-link <?= $current_page === 'feedback.php' ? 'active' : '' ?>">
-
-                        <i class="fa-regular fa-comment-dots"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-regular fa-comment-dots"></i>
+                        </span>
 
                         <span>Feedback</span>
 
                     </a>
 
 
-                    <!-- Profile -->
+                    <a href="profile.php"
+                       class="ngo-menu-item <?= ($current_page == 'profile.php' || $current_page == 'edit-profile.php') ? 'active' : '' ?>">
 
-                    <a
-                        href="profile.php"
-                        class="ngo-nav-link <?= $current_page === 'profile.php' || $current_page === 'edit-profile.php' ? 'active' : '' ?>">
-
-                        <i class="fa-regular fa-user"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-regular fa-user"></i>
+                        </span>
 
                         <span>Profile</span>
 
                     </a>
 
 
-                    <!-- Logout -->
+                    <a href="../logout.php"
+                       class="ngo-menu-item ngo-logout">
 
-                    <a
-                        href="../logout.php"
-                        class="ngo-nav-link ngo-logout">
-
-                        <i class="fa-solid fa-right-from-bracket"></i>
+                        <span class="ngo-menu-icon">
+                            <i class="fa-solid fa-right-from-bracket"></i>
+                        </span>
 
                         <span>Logout</span>
 
                     </a>
 
-                </nav>
+                </div>
 
             </aside>
 
 
-            <!-- ===================================================== -->
-            <!-- MAIN -->
-            <!-- ===================================================== -->
+            <!-- ==========================================
+                 MAIN AREA
+            =========================================== -->
 
             <main class="ngo-main">
 
 
-                <!-- TOP BAR -->
+                <!-- TOPBAR -->
 
                 <header class="ngo-topbar">
 
-                    <div class="ngo-topbar-left">
+                    <div class="ngo-top-left">
 
-                        <button
-                            type="button"
-                            class="ngo-menu-btn"
-                            onclick="toggleNGOSidebar()">
+                        <button type="button"
+                                class="ngo-mobile-menu"
+                                onclick="toggleNGOMenu()">
 
                             <i class="fa-solid fa-bars"></i>
 
@@ -295,56 +292,54 @@ if (!function_exists('ngo_header')) {
 
                         <div>
 
-                            <span class="ngo-breadcrumb">
-                                NGO Portal
-                            </span>
+                            <div class="ngo-breadcrumb">
+                                FoodShare / NGO
+                            </div>
 
-                            <h3>
+                            <h1>
                                 <?= htmlspecialchars($page_title) ?>
-                            </h3>
+                            </h1>
 
                         </div>
 
                     </div>
 
 
-                    <div class="ngo-topbar-right">
+                    <div class="ngo-top-right">
 
-                        <!-- Notification -->
-
-                        <a
-                            href="notifications.php"
-                            class="ngo-top-icon"
-                            title="Notifications">
+                        <button class="ngo-top-icon"
+                                onclick="window.location='notifications.php'">
 
                             <i class="fa-regular fa-bell"></i>
 
-                        </a>
+                            <span class="ngo-red-dot"></span>
+
+                        </button>
 
 
-                        <!-- Profile -->
+                        <div class="ngo-top-divider"></div>
 
-                        <a
-                            href="profile.php"
-                            class="ngo-top-profile">
+
+                        <a href="profile.php"
+                           class="ngo-top-profile">
 
                             <div class="ngo-top-avatar">
-
-                                <i class="fa-solid fa-building-ngo"></i>
-
+                                <i class="fa-solid fa-building"></i>
                             </div>
 
-                            <div>
+                            <div class="ngo-top-profile-info">
 
                                 <strong>
                                     <?= htmlspecialchars($ngo_name) ?>
                                 </strong>
 
-                                <small>
-                                    NGO
-                                </small>
+                                <span>
+                                    NGO Partner
+                                </span>
 
                             </div>
+
+                            <i class="fa-solid fa-chevron-down"></i>
 
                         </a>
 
@@ -353,20 +348,14 @@ if (!function_exists('ngo_header')) {
                 </header>
 
 
-                <!-- PAGE CONTENT -->
+                <!-- CONTENT -->
 
-                <div class="ngo-page">
+                <div class="ngo-content">
 
         <?php
     }
 }
 
-
-/*
-|--------------------------------------------------------------------------
-| NGO Footer
-|--------------------------------------------------------------------------
-*/
 
 if (!function_exists('ngo_footer')) {
 
@@ -375,62 +364,46 @@ if (!function_exists('ngo_footer')) {
         ?>
 
                 </div>
-                <!-- /.ngo-page -->
 
             </main>
-            <!-- /.ngo-main -->
 
         </div>
-        <!-- /.ngo-app -->
 
 
         <script>
 
-            function toggleNGOSidebar()
+            function toggleNGOMenu()
             {
                 const sidebar =
                     document.getElementById('ngoSidebar');
 
-                if (sidebar) {
-
-                    sidebar.classList.toggle('show');
-
-                }
+                sidebar.classList.toggle('mobile-open');
             }
 
 
-            /*
-            |--------------------------------------------------------------------------
-            | Close sidebar when clicking outside on mobile
-            |--------------------------------------------------------------------------
-            */
+            document.addEventListener(
+                'click',
+                function(event)
+                {
+                    const sidebar =
+                        document.getElementById('ngoSidebar');
 
-            document.addEventListener('click', function(event)
-            {
+                    const button =
+                        document.querySelector('.ngo-mobile-menu');
 
-                const sidebar =
-                    document.getElementById('ngoSidebar');
-
-                const menuButton =
-                    document.querySelector('.ngo-menu-btn');
-
-
-                if (
-                    window.innerWidth <= 900 &&
-                    sidebar &&
-                    sidebar.classList.contains('show') &&
-                    !sidebar.contains(event.target) &&
-                    !menuButton.contains(event.target)
-                ) {
-
-                    sidebar.classList.remove('show');
-
+                    if (
+                        window.innerWidth <= 900 &&
+                        sidebar.classList.contains('mobile-open') &&
+                        !sidebar.contains(event.target) &&
+                        !button.contains(event.target)
+                    )
+                    {
+                        sidebar.classList.remove('mobile-open');
+                    }
                 }
-
-            });
+            );
 
         </script>
-
 
         </body>
 
