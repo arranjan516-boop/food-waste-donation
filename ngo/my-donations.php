@@ -1,113 +1,187 @@
 <?php
+session_start();
+
 require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
+require_once "../includes/ngo-layout.php";
 
-require_role("ngo");
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../login.php");
+    exit;
+}
 
-$ngo_id = $_SESSION["user_id"];
+$ngo_id = (int)$_SESSION['user_id'];
 
 $stmt = $conn->prepare("
     SELECT
-        d.delivery_id,
-        d.donation_id,
-        d.status,
-        d.method,
+        dl.delivery_id,
+        dl.donation_id,
+        dl.request_id,
+        dl.method,
+        dl.status,
+        dl.confirmed_at,
+        dl.delivered_at,
+        dl.created_at,
+
         fd.food_name,
         fd.food_category,
         fd.quantity,
         fd.unit,
         fd.food_photo,
         fd.city,
-        fd.area,
-        u.name AS donor_name
-    FROM deliveries d
+        fd.area
+
+    FROM deliveries dl
+
     INNER JOIN food_donations fd
-        ON d.donation_id = fd.donation_id
-    LEFT JOIN users u
-        ON fd.donor_id = u.user_id
-    WHERE d.ngo_id = ?
-    ORDER BY d.delivery_id DESC
+        ON fd.donation_id = dl.donation_id
+
+    WHERE dl.ngo_id = ?
+
+    ORDER BY dl.delivery_id DESC
 ");
 
 $stmt->bind_param("i", $ngo_id);
 $stmt->execute();
 
-$result = $stmt->get_result();
+$donations = $stmt->get_result();
+
+ngo_header("My Donations");
 ?>
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>My Donations</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-    <link rel="stylesheet" href="../assets/css/food.css">
-</head>
+<div class="ngo-content">
 
-<body>
+    <div class="ngo-page-header">
 
-<?php include "../includes/navbar.php"; ?>
-
-<div class="container">
-
-    <h1>My Donations</h1>
-
-    <?php if ($result->num_rows > 0): ?>
-
-        <div class="food-grid">
-
-            <?php while ($row = $result->fetch_assoc()): ?>
-
-                <div class="food-card">
-
-                    <?php if (!empty($row["food_photo"])): ?>
-
-                        <img
-                            src="../uploads/food/<?php echo htmlspecialchars($row["food_photo"]); ?>"
-                            class="food-image"
-                            alt="Food"
-                        >
-
-                    <?php endif; ?>
-
-                    <h2>
-                        <?php echo htmlspecialchars($row["food_name"]); ?>
-                    </h2>
-
-                    <p>
-                        <strong>Quantity:</strong>
-                        <?php echo htmlspecialchars($row["quantity"]); ?>
-                        <?php echo htmlspecialchars($row["unit"]); ?>
-                    </p>
-
-                    <p>
-                        <strong>Donor:</strong>
-                        <?php echo htmlspecialchars($row["donor_name"]); ?>
-                    </p>
-
-                    <p>
-                        <strong>Status:</strong>
-                        <?php echo htmlspecialchars($row["status"]); ?>
-                    </p>
-
-                    <a href="pickup-schedule.php?id=<?php echo $row["delivery_id"]; ?>">
-                        Pickup Schedule
-                    </a>
-
-                </div>
-
-            <?php endwhile; ?>
-
+        <div>
+            <h1>My Donations</h1>
+            <p>Donations accepted and managed by your NGO.</p>
         </div>
 
-    <?php else: ?>
+        <a
+            href="available-donations.php"
+            class="ngo-btn ngo-btn-primary">
+            + Find More
+        </a>
 
-        <p>You have not accepted any donations yet.</p>
+    </div>
+
+    <?php if (isset($_SESSION['ngo_success'])): ?>
+
+        <div class="ngo-alert ngo-alert-success">
+            <?= htmlspecialchars($_SESSION['ngo_success']) ?>
+        </div>
+
+        <?php unset($_SESSION['ngo_success']); ?>
 
     <?php endif; ?>
 
+    <?php if (isset($_SESSION['ngo_error'])): ?>
+
+        <div class="ngo-alert ngo-alert-danger">
+            <?= htmlspecialchars($_SESSION['ngo_error']) ?>
+        </div>
+
+        <?php unset($_SESSION['ngo_error']); ?>
+
+    <?php endif; ?>
+
+    <section class="ngo-section">
+
+        <?php if ($donations->num_rows > 0): ?>
+
+            <div class="ngo-table-wrapper">
+
+                <table class="ngo-table">
+
+                    <thead>
+                        <tr>
+                            <th>Food</th>
+                            <th>Quantity</th>
+                            <th>Location</th>
+                            <th>Method</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                    <?php while ($row = $donations->fetch_assoc()): ?>
+
+                        <tr>
+
+                            <td>
+                                <strong>
+                                    <?= htmlspecialchars($row['food_name']) ?>
+                                </strong>
+
+                                <small>
+                                    <?= htmlspecialchars($row['food_category'] ?? '') ?>
+                                </small>
+                            </td>
+
+                            <td>
+                                <?= htmlspecialchars($row['quantity']) ?>
+                                <?= htmlspecialchars($row['unit'] ?? '') ?>
+                            </td>
+
+                            <td>
+                                📍
+                                <?= htmlspecialchars($row['area'] ?? '') ?>,
+                                <?= htmlspecialchars($row['city'] ?? '') ?>
+                            </td>
+
+                            <td>
+                                <?= htmlspecialchars($row['method']) ?>
+                            </td>
+
+                            <td>
+                                <span class="ngo-badge">
+                                    <?= htmlspecialchars($row['status']) ?>
+                                </span>
+                            </td>
+
+                            <td>
+
+                                <a
+                                    href="collection-status.php?id=<?= (int)$row['delivery_id'] ?>"
+                                    class="ngo-btn ngo-btn-small">
+                                    Track
+                                </a>
+
+                            </td>
+
+                        </tr>
+
+                    <?php endwhile; ?>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        <?php else: ?>
+
+            <div class="ngo-empty">
+                <div>📦</div>
+                <h3>No accepted donations</h3>
+                <p>Accept a donation to see it here.</p>
+
+                <a
+                    href="available-donations.php"
+                    class="ngo-btn ngo-btn-primary">
+                    Browse Donations
+                </a>
+            </div>
+
+        <?php endif; ?>
+
+    </section>
+
 </div>
 
-</body>
-</html>
+<?php
+$stmt->close();
+ngo_footer();
+?>
