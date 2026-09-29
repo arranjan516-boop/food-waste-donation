@@ -1,213 +1,169 @@
 <?php
+session_start();
+
 require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
+require_once "../includes/ngo-layout.php";
 
-require_role("ngo");
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../login.php");
+    exit;
+}
 
-$search = trim($_GET["search"] ?? "");
+$search = trim($_GET['search'] ?? '');
+$category = trim($_GET['category'] ?? '');
 
 $sql = "
     SELECT
-        fd.donation_id,
-        fd.food_name,
-        fd.food_category,
-        fd.description,
-        fd.quantity,
-        fd.unit,
-        fd.food_photo,
-        fd.city,
-        fd.area,
-        fd.delivery_preference,
-        u.name AS donor_name
-    FROM food_donations fd
-    LEFT JOIN users u
-        ON fd.donor_id = u.user_id
-    LEFT JOIN deliveries d
-        ON fd.donation_id = d.donation_id
-        AND (d.ngo_id IS NOT NULL OR d.collector_id IS NOT NULL)
-    WHERE d.delivery_id IS NULL
+        donation_id,
+        food_name,
+        food_category,
+        food_type,
+        description,
+        quantity,
+        unit,
+        food_photo,
+        city,
+        area,
+        pincode,
+        best_before,
+        urgency,
+        status
+    FROM food_donations
+    WHERE status = 'available'
 ";
 
-if ($search !== "") {
+$params = [];
+$types = "";
 
+if ($search !== '') {
     $sql .= "
         AND (
-            fd.food_name LIKE ?
-            OR fd.food_category LIKE ?
-            OR fd.city LIKE ?
-            OR fd.area LIKE ?
+            food_name LIKE ?
+            OR food_category LIKE ?
+            OR city LIKE ?
+            OR area LIKE ?
         )
     ";
-}
-
-$sql .= " ORDER BY fd.donation_id DESC";
-
-if ($search !== "") {
-
-    $stmt = $conn->prepare($sql);
 
     $like = "%" . $search . "%";
 
-    $stmt->bind_param(
-        "ssss",
-        $like,
-        $like,
-        $like,
-        $like
-    );
+    $params[] = $like;
+    $params[] = $like;
+    $params[] = $like;
+    $params[] = $like;
 
-    $stmt->execute();
-
-    $result = $stmt->get_result();
-
-} else {
-
-    $result = $conn->query($sql);
+    $types .= "ssss";
 }
 
-$ngo_page_title = "Available Donations";
+if ($category !== '') {
+    $sql .= " AND food_category = ?";
+    $params[] = $category;
+    $types .= "s";
+}
+
+$sql .= " ORDER BY donation_id DESC";
+
+$stmt = $conn->prepare($sql);
+
+if (!empty($params)) {
+    $stmt->bind_param($types, ...$params);
+}
+
+$stmt->execute();
+$donations = $stmt->get_result();
+
+ngo_header("Available Donations");
 ?>
 
-<!DOCTYPE html>
-<html>
+<div class="ngo-content">
 
-<head>
-
-    <meta charset="UTF-8">
-
-    <title>Available Donations</title>
-
-    <link rel="stylesheet" href="../assets/css/ngo.css">
-
-</head>
-
-<body class="ngo-body">
-
-<?php include "../includes/ngo-layout.php"; ?>
-
-<main class="ngo-content">
+    <div class="ngo-page-header">
+        <div>
+            <h1>Available Donations</h1>
+            <p>Find food donations available for collection.</p>
+        </div>
+    </div>
 
     <section class="ngo-section">
 
-        <div class="ngo-section-header">
+        <form method="GET" class="ngo-filter-bar">
 
-            <div>
-                <h2>Available Food Donations</h2>
+            <input
+                type="text"
+                name="search"
+                value="<?= htmlspecialchars($search) ?>"
+                placeholder="Search food, category or location...">
 
-                <p style="color:#6b7280;font-size:13px;">
-                    Find surplus food available for NGO collection.
-                </p>
-            </div>
+            <input
+                type="text"
+                name="category"
+                value="<?= htmlspecialchars($category) ?>"
+                placeholder="Food category">
 
-        </div>
+            <button type="submit" class="ngo-btn ngo-btn-primary">
+                Search
+            </button>
 
-
-        <!-- SEARCH -->
-
-        <form method="GET" style="margin-bottom:25px;">
-
-            <div style="display:flex;gap:10px;">
-
-                <input
-                    class="ngo-input"
-                    type="text"
-                    name="search"
-                    value="<?php echo htmlspecialchars($search); ?>"
-                    placeholder="Search food, category, city or area..."
-                >
-
-                <button
-                    type="submit"
-                    class="ngo-btn ngo-btn-primary"
-                >
-                    🔍 Search
-                </button>
-
-            </div>
+            <a href="available-donations.php" class="ngo-btn ngo-btn-outline">
+                Reset
+            </a>
 
         </form>
 
-
-        <?php if ($result && $result->num_rows > 0): ?>
+        <?php if ($donations->num_rows > 0): ?>
 
             <div class="ngo-donation-grid">
 
-                <?php while ($food = $result->fetch_assoc()): ?>
+                <?php while ($food = $donations->fetch_assoc()): ?>
+
+                    <?php
+                    $photo = !empty($food['food_photo'])
+                        ? "../uploads/food/" . htmlspecialchars($food['food_photo'])
+                        : "../assets/images/no-food.png";
+                    ?>
 
                     <div class="ngo-donation-card">
 
-                        <?php if (!empty($food["food_photo"])): ?>
+                        <img
+                            src="<?= $photo ?>"
+                            class="ngo-food-image"
+                            alt="Food">
 
-                            <img
-                                class="ngo-food-image"
-                                src="../uploads/food/<?php echo htmlspecialchars($food["food_photo"]); ?>"
-                                alt="Food"
-                            >
+                        <div class="ngo-card-body">
 
-                        <?php else: ?>
-
-                            <div class="ngo-food-placeholder">
-                                🍱
+                            <div class="ngo-card-title-row">
+                                <h3><?= htmlspecialchars($food['food_name']) ?></h3>
+                                <span class="ngo-badge ngo-badge-success">
+                                    Available
+                                </span>
                             </div>
 
-                        <?php endif; ?>
-
-
-                        <div class="ngo-donation-body">
-
-                            <span class="ngo-category">
-                                <?php echo htmlspecialchars($food["food_category"]); ?>
-                            </span>
-
-                            <h3>
-                                <?php echo htmlspecialchars($food["food_name"]); ?>
-                            </h3>
-
-
-                            <div class="ngo-food-info">
-
-                                <div class="ngo-info-item">
-
-                                    <small>Quantity</small>
-
-                                    <strong>
-                                        <?php echo htmlspecialchars($food["quantity"]); ?>
-                                        <?php echo htmlspecialchars($food["unit"]); ?>
-                                    </strong>
-
-                                </div>
-
-                                <div class="ngo-info-item">
-
-                                    <small>Location</small>
-
-                                    <strong>
-                                        <?php echo htmlspecialchars($food["city"]); ?>
-                                    </strong>
-
-                                </div>
-
-                            </div>
-
-
-                            <p style="font-size:12px;color:#6b7280;">
-
-                                Donor:
-                                <strong>
-                                    <?php echo htmlspecialchars($food["donor_name"]); ?>
-                                </strong>
-
+                            <p>
+                                <?= htmlspecialchars($food['food_category'] ?? 'Food') ?>
                             </p>
 
+                            <div class="ngo-food-meta">
+                                <span>
+                                    📦 <?= htmlspecialchars($food['quantity']) ?>
+                                    <?= htmlspecialchars($food['unit'] ?? '') ?>
+                                </span>
+
+                                <span>
+                                    📍 <?= htmlspecialchars($food['area'] ?? $food['city'] ?? '') ?>
+                                </span>
+                            </div>
+
+                            <?php if (!empty($food['best_before'])): ?>
+                                <small>
+                                    Best before:
+                                    <?= htmlspecialchars($food['best_before']) ?>
+                                </small>
+                            <?php endif; ?>
 
                             <a
-                                href="donation-details.php?id=<?php echo $food["donation_id"]; ?>"
-                                class="ngo-btn ngo-btn-primary"
-                                style="width:100%;"
-                            >
-                                View Details →
+                                href="donation-details.php?id=<?= (int)$food['donation_id'] ?>"
+                                class="ngo-btn ngo-btn-primary ngo-btn-full">
+                                View Donation
                             </a>
 
                         </div>
@@ -221,27 +177,18 @@ $ngo_page_title = "Available Donations";
         <?php else: ?>
 
             <div class="ngo-empty">
-
-                <div class="ngo-empty-icon">
-                    🔍
-                </div>
-
-                <h3>No Donations Found</h3>
-
-                <p>
-                    Try another search or check again later.
-                </p>
-
+                <div>🔎</div>
+                <h3>No donations found</h3>
+                <p>Try another search.</p>
             </div>
 
         <?php endif; ?>
 
     </section>
 
-</main>
-
 </div>
 
-</body>
-
-</html>
+<?php
+$stmt->close();
+ngo_footer();
+?>
