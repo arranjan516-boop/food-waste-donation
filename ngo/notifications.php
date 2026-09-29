@@ -1,72 +1,132 @@
 <?php
+session_start();
+
 require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
+require_once "../includes/ngo-layout.php";
 
-require_role("ngo");
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../login.php");
+    exit;
+}
 
-$user_id = $_SESSION["user_id"];
+$ngo_id = (int)$_SESSION['user_id'];
+
+/* Mark notification as read */
+if (isset($_GET['read'])) {
+
+    $notification_id = (int)$_GET['read'];
+
+    $stmt = $conn->prepare("
+        UPDATE notifications
+        SET is_read = 1
+        WHERE notification_id = ?
+        AND user_id = ?
+    ");
+
+    $stmt->bind_param(
+        "ii",
+        $notification_id,
+        $ngo_id
+    );
+
+    $stmt->execute();
+    $stmt->close();
+
+    header("Location: notifications.php");
+    exit;
+}
 
 $stmt = $conn->prepare("
-    SELECT *
+    SELECT
+        notification_id,
+        title,
+        message,
+        notification_type,
+        related_id,
+        is_read,
+        created_at
     FROM notifications
     WHERE user_id = ?
-    ORDER BY created_at DESC
+    ORDER BY notification_id DESC
 ");
 
-$stmt->bind_param("i", $user_id);
+$stmt->bind_param("i", $ngo_id);
 $stmt->execute();
 
-$result = $stmt->get_result();
+$notifications = $stmt->get_result();
+
+ngo_header("Notifications");
 ?>
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Notifications</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
+<div class="ngo-content">
 
-<body>
+    <div class="ngo-page-header">
 
-<?php include "../includes/navbar.php"; ?>
+        <div>
+            <h1>Notifications</h1>
+            <p>Stay updated with donation and delivery activities.</p>
+        </div>
 
-<div class="container">
+    </div>
 
-    <h1>Notifications</h1>
+    <section class="ngo-section">
 
-    <?php if ($result->num_rows > 0): ?>
+        <?php if ($notifications->num_rows > 0): ?>
 
-        <?php while ($row = $result->fetch_assoc()): ?>
+            <?php while ($notification = $notifications->fetch_assoc()): ?>
 
-            <div class="dashboard-card">
+                <div class="ngo-notification
+                    <?= $notification['is_read'] ? '' : 'ngo-notification-unread' ?>">
 
-                <h3>
-                    <?php echo htmlspecialchars($row["title"]); ?>
-                </h3>
+                    <div class="ngo-notification-icon">
+                        🔔
+                    </div>
 
-                <p>
-                    <?php echo htmlspecialchars($row["message"]); ?>
-                </p>
+                    <div class="ngo-notification-content">
 
-                <small>
-                    <?php echo htmlspecialchars($row["created_at"]); ?>
-                </small>
+                        <h3>
+                            <?= htmlspecialchars($notification['title']) ?>
+                        </h3>
 
+                        <p>
+                            <?= htmlspecialchars($notification['message']) ?>
+                        </p>
+
+                        <small>
+                            <?= htmlspecialchars($notification['created_at']) ?>
+                        </small>
+
+                    </div>
+
+                    <?php if (!$notification['is_read']): ?>
+
+                        <a
+                            href="?read=<?= (int)$notification['notification_id'] ?>"
+                            class="ngo-btn ngo-btn-small">
+                            Mark Read
+                        </a>
+
+                    <?php endif; ?>
+
+                </div>
+
+            <?php endwhile; ?>
+
+        <?php else: ?>
+
+            <div class="ngo-empty">
+                <div>🔔</div>
+                <h3>No notifications</h3>
+                <p>You are all caught up.</p>
             </div>
 
-            <br>
+        <?php endif; ?>
 
-        <?php endwhile; ?>
-
-    <?php else: ?>
-
-        <p>No notifications found.</p>
-
-    <?php endif; ?>
+    </section>
 
 </div>
 
-</body>
-</html>
+<?php
+$stmt->close();
+ngo_footer();
+?>
