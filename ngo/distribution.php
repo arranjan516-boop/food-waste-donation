@@ -1,112 +1,138 @@
 <?php
+session_start();
+
 require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
+require_once "../includes/ngo-layout.php";
 
-require_role("ngo");
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../login.php");
+    exit;
+}
 
-$ngo_id = $_SESSION["user_id"];
+$ngo_id = (int)$_SESSION['user_id'];
 
 $stmt = $conn->prepare("
     SELECT
-        d.delivery_id,
-        d.donation_id,
-        d.status,
+        dl.delivery_id,
+        dl.donation_id,
+        dl.request_id,
+        dl.status,
+        dl.method,
+        dl.delivered_at,
+
         fd.food_name,
-        fd.quantity AS donated_quantity,
+        fd.quantity,
         fd.unit,
-        fr.request_id,
-        fr.quantity AS requested_quantity,
-        fr.message,
-        fr.status AS request_status,
-        u.name AS recipient_name,
-        u.phone AS recipient_phone
-    FROM deliveries d
+        fd.food_photo,
+        fd.city,
+        fd.area
+
+    FROM deliveries dl
+
     INNER JOIN food_donations fd
-        ON d.donation_id = fd.donation_id
-    INNER JOIN food_requests fr
-        ON d.donation_id = fr.donation_id
-    INNER JOIN users u
-        ON fr.recipient_id = u.user_id
-    WHERE d.ngo_id = ?
-    AND fr.status = 'accepted'
-    ORDER BY fr.request_id DESC
+        ON fd.donation_id = dl.donation_id
+
+    WHERE dl.ngo_id = ?
+
+    ORDER BY dl.delivery_id DESC
 ");
 
 $stmt->bind_param("i", $ngo_id);
 $stmt->execute();
 
-$result = $stmt->get_result();
+$rows = $stmt->get_result();
+
+ngo_header("Distribution");
 ?>
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Distribution</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
+<div class="ngo-content">
 
-<body>
+    <div class="ngo-page-header">
+        <div>
+            <h1>Distribution</h1>
+            <p>Manage food distribution to recipients.</p>
+        </div>
+    </div>
 
-<?php include "../includes/navbar.php"; ?>
+    <section class="ngo-section">
 
-<div class="container">
+        <?php if ($rows->num_rows > 0): ?>
 
-    <h1>Food Distribution</h1>
+            <div class="ngo-donation-grid">
 
-    <p>
-        Manage food distribution to recipients.
-    </p>
+                <?php while ($row = $rows->fetch_assoc()): ?>
 
-    <?php if ($result->num_rows > 0): ?>
+                    <?php
+                    $photo = !empty($row['food_photo'])
+                        ? "../uploads/food/" . htmlspecialchars($row['food_photo'])
+                        : "../assets/images/no-food.png";
+                    ?>
 
-        <?php while ($row = $result->fetch_assoc()): ?>
+                    <div class="ngo-donation-card">
 
-            <div class="dashboard-card">
+                        <img
+                            src="<?= $photo ?>"
+                            class="ngo-food-image"
+                            alt="Food">
 
-                <h2>
-                    <?php echo htmlspecialchars($row["food_name"]); ?>
-                </h2>
+                        <div class="ngo-card-body">
 
-                <p>
-                    <strong>Recipient:</strong>
-                    <?php echo htmlspecialchars($row["recipient_name"]); ?>
-                </p>
+                            <div class="ngo-card-title-row">
 
-                <p>
-                    <strong>Phone:</strong>
-                    <?php echo htmlspecialchars($row["recipient_phone"]); ?>
-                </p>
+                                <h3>
+                                    <?= htmlspecialchars($row['food_name']) ?>
+                                </h3>
 
-                <p>
-                    <strong>Requested Quantity:</strong>
-                    <?php echo htmlspecialchars($row["requested_quantity"]); ?>
-                    <?php echo htmlspecialchars($row["unit"]); ?>
-                </p>
+                                <span class="ngo-badge">
+                                    <?= htmlspecialchars($row['status']) ?>
+                                </span>
 
-                <p>
-                    <strong>Delivery Status:</strong>
-                    <?php echo htmlspecialchars($row["status"]); ?>
-                </p>
+                            </div>
 
-                <a href="distribution-details.php?id=<?php echo $row["request_id"]; ?>">
-                    View Distribution
-                </a>
+                            <div class="ngo-food-meta">
+
+                                <span>
+                                    📦
+                                    <?= htmlspecialchars($row['quantity']) ?>
+                                    <?= htmlspecialchars($row['unit'] ?? '') ?>
+                                </span>
+
+                                <span>
+                                    📍
+                                    <?= htmlspecialchars($row['area'] ?? '') ?>
+                                </span>
+
+                            </div>
+
+                            <a
+                                href="distribution-details.php?id=<?= (int)$row['delivery_id'] ?>"
+                                class="ngo-btn ngo-btn-primary ngo-btn-full">
+                                Manage Distribution
+                            </a>
+
+                        </div>
+
+                    </div>
+
+                <?php endwhile; ?>
 
             </div>
 
-            <br>
+        <?php else: ?>
 
-        <?php endwhile; ?>
+            <div class="ngo-empty">
+                <div>🤝</div>
+                <h3>No distributions</h3>
+                <p>Distribution records will appear here.</p>
+            </div>
 
-    <?php else: ?>
+        <?php endif; ?>
 
-        <p>No food distribution requests available.</p>
-
-    <?php endif; ?>
+    </section>
 
 </div>
 
-</body>
-</html>
+<?php
+$stmt->close();
+ngo_footer();
+?>
