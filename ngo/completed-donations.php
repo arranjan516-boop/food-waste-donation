@@ -1,111 +1,135 @@
 <?php
+session_start();
+
 require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
+require_once "../includes/ngo-layout.php";
 
-require_role("ngo");
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../login.php");
+    exit;
+}
 
-$ngo_id = $_SESSION["user_id"];
+$ngo_id = (int)$_SESSION['user_id'];
 
 $stmt = $conn->prepare("
     SELECT
-        d.delivery_id,
-        d.donation_id,
-        d.status,
-        d.delivered_at,
+        dl.delivery_id,
         fd.food_name,
         fd.food_category,
         fd.quantity,
         fd.unit,
         fd.city,
         fd.area,
-        u.name AS donor_name
-    FROM deliveries d
+        dl.method,
+        dl.status,
+        dl.delivered_at
+
+    FROM deliveries dl
+
     INNER JOIN food_donations fd
-        ON d.donation_id = fd.donation_id
-    LEFT JOIN users u
-        ON fd.donor_id = u.user_id
-    WHERE d.ngo_id = ?
-    AND d.status = 'delivered'
-    ORDER BY d.delivered_at DESC
+        ON fd.donation_id = dl.donation_id
+
+    WHERE dl.ngo_id = ?
+    AND dl.status = 'delivered'
+
+    ORDER BY dl.delivered_at DESC
 ");
 
 $stmt->bind_param("i", $ngo_id);
 $stmt->execute();
 
-$result = $stmt->get_result();
+$rows = $stmt->get_result();
+
+ngo_header("Completed Donations");
 ?>
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Completed Donations</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
+<div class="ngo-content">
 
-<body>
+    <div class="ngo-page-header">
 
-<?php include "../includes/navbar.php"; ?>
+        <div>
+            <h1>Completed Donations</h1>
+            <p>Successfully completed food donations.</p>
+        </div>
 
-<div class="container">
+    </div>
 
-    <h1>Completed Donations</h1>
+    <section class="ngo-section">
 
-    <?php if ($result->num_rows > 0): ?>
+        <?php if ($rows->num_rows > 0): ?>
 
-        <?php while ($row = $result->fetch_assoc()): ?>
+            <div class="ngo-table-wrapper">
 
-            <div class="dashboard-card">
+                <table class="ngo-table">
 
-                <h2>
-                    <?php echo htmlspecialchars($row["food_name"]); ?>
-                </h2>
+                    <thead>
+                        <tr>
+                            <th>Food</th>
+                            <th>Quantity</th>
+                            <th>Location</th>
+                            <th>Method</th>
+                            <th>Completed</th>
+                        </tr>
+                    </thead>
 
-                <p>
-                    Category:
-                    <?php echo htmlspecialchars($row["food_category"]); ?>
-                </p>
+                    <tbody>
 
-                <p>
-                    Quantity:
-                    <?php echo htmlspecialchars($row["quantity"]); ?>
-                    <?php echo htmlspecialchars($row["unit"]); ?>
-                </p>
+                    <?php while ($row = $rows->fetch_assoc()): ?>
 
-                <p>
-                    Donor:
-                    <?php echo htmlspecialchars($row["donor_name"]); ?>
-                </p>
+                        <tr>
 
-                <p>
-                    Location:
-                    <?php echo htmlspecialchars($row["city"]); ?>,
-                    <?php echo htmlspecialchars($row["area"]); ?>
-                </p>
+                            <td>
+                                <strong>
+                                    <?= htmlspecialchars($row['food_name']) ?>
+                                </strong>
+                                <small>
+                                    <?= htmlspecialchars($row['food_category'] ?? '') ?>
+                                </small>
+                            </td>
 
-                <p>
-                    Completed:
-                    <?php echo htmlspecialchars($row["delivered_at"]); ?>
-                </p>
+                            <td>
+                                <?= htmlspecialchars($row['quantity']) ?>
+                                <?= htmlspecialchars($row['unit'] ?? '') ?>
+                            </td>
 
-                <p>
-                    <strong>Status: Completed</strong>
-                </p>
+                            <td>
+                                <?= htmlspecialchars($row['area'] ?? '') ?>,
+                                <?= htmlspecialchars($row['city'] ?? '') ?>
+                            </td>
+
+                            <td>
+                                <?= htmlspecialchars($row['method']) ?>
+                            </td>
+
+                            <td>
+                                <?= htmlspecialchars($row['delivered_at'] ?? '-') ?>
+                            </td>
+
+                        </tr>
+
+                    <?php endwhile; ?>
+
+                    </tbody>
+
+                </table>
 
             </div>
 
-            <br>
+        <?php else: ?>
 
-        <?php endwhile; ?>
+            <div class="ngo-empty">
+                <div>🏆</div>
+                <h3>No completed donations</h3>
+                <p>Your completed donations will appear here.</p>
+            </div>
 
-    <?php else: ?>
+        <?php endif; ?>
 
-        <p>No completed donations yet.</p>
-
-    <?php endif; ?>
+    </section>
 
 </div>
 
-</body>
-</html>
+<?php
+$stmt->close();
+ngo_footer();
+?>
