@@ -1,106 +1,154 @@
 <?php
+session_start();
+
 require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
+require_once "../includes/ngo-layout.php";
 
-require_role("ngo");
-
-$ngo_id = $_SESSION["user_id"];
-
-$delivery_id = isset($_GET["id"]) ? intval($_GET["id"]) : 0;
-
-if ($delivery_id <= 0) {
-    die("Invalid delivery ID.");
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../login.php");
+    exit;
 }
+
+$ngo_id = (int)$_SESSION['user_id'];
 
 $stmt = $conn->prepare("
     SELECT
-        d.*,
+        dl.delivery_id,
+        dl.status,
+        dl.method,
+        dl.created_at,
+        dl.confirmed_at,
+
         fd.food_name,
-        fd.food_category,
         fd.quantity,
         fd.unit,
         fd.city,
         fd.area,
-        fd.food_photo,
+        fd.address,
+
         u.name AS donor_name,
         u.phone AS donor_phone
-    FROM deliveries d
+
+    FROM deliveries dl
+
     INNER JOIN food_donations fd
-        ON d.donation_id = fd.donation_id
+        ON fd.donation_id = dl.donation_id
+
     LEFT JOIN users u
-        ON fd.donor_id = u.user_id
-    WHERE d.delivery_id = ?
-    AND d.ngo_id = ?
+        ON u.user_id = fd.donor_id
+
+    WHERE dl.ngo_id = ?
+
+    ORDER BY dl.delivery_id DESC
 ");
 
-$stmt->bind_param("ii", $delivery_id, $ngo_id);
+$stmt->bind_param("i", $ngo_id);
 $stmt->execute();
 
-$result = $stmt->get_result();
+$rows = $stmt->get_result();
 
-if ($result->num_rows == 0) {
-    die("Donation not found.");
-}
-
-$data = $result->fetch_assoc();
+ngo_header("Pickup Schedule");
 ?>
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Pickup Schedule</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
+<div class="ngo-content">
 
-<body>
+    <div class="ngo-page-header">
+        <div>
+            <h1>Pickup Schedule</h1>
+            <p>Manage your upcoming food collections.</p>
+        </div>
+    </div>
 
-<?php include "../includes/navbar.php"; ?>
+    <section class="ngo-section">
 
-<div class="container">
+        <?php if ($rows->num_rows > 0): ?>
 
-    <h1>Pickup Schedule</h1>
+            <div class="ngo-table-wrapper">
 
-    <h2>
-        <?php echo htmlspecialchars($data["food_name"]); ?>
-    </h2>
+                <table class="ngo-table">
 
-    <p>
-        <strong>Quantity:</strong>
-        <?php echo htmlspecialchars($data["quantity"]); ?>
-        <?php echo htmlspecialchars($data["unit"]); ?>
-    </p>
+                    <thead>
+                        <tr>
+                            <th>Food</th>
+                            <th>Donor</th>
+                            <th>Pickup Location</th>
+                            <th>Method</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
 
-    <p>
-        <strong>Pickup Location:</strong>
-        <?php echo htmlspecialchars($data["city"]); ?>,
-        <?php echo htmlspecialchars($data["area"]); ?>
-    </p>
+                    <tbody>
 
-    <h3>Donor</h3>
+                    <?php while ($row = $rows->fetch_assoc()): ?>
 
-    <p>
-        <?php echo htmlspecialchars($data["donor_name"]); ?>
-    </p>
+                        <tr>
 
-    <p>
-        Phone:
-        <?php echo htmlspecialchars($data["donor_phone"]); ?>
-    </p>
+                            <td>
+                                <strong>
+                                    <?= htmlspecialchars($row['food_name']) ?>
+                                </strong>
 
-    <p>
-        <strong>Current Status:</strong>
-        <?php echo htmlspecialchars($data["status"]); ?>
-    </p>
+                                <small>
+                                    <?= htmlspecialchars($row['quantity']) ?>
+                                    <?= htmlspecialchars($row['unit'] ?? '') ?>
+                                </small>
+                            </td>
 
-    <br>
+                            <td>
+                                <?= htmlspecialchars($row['donor_name'] ?? 'Donor') ?>
 
-    <a href="collection-status.php?id=<?php echo $delivery_id; ?>">
-        Update Collection Status
-    </a>
+                                <?php if (!empty($row['donor_phone'])): ?>
+                                    <small>
+                                        <?= htmlspecialchars($row['donor_phone']) ?>
+                                    </small>
+                                <?php endif; ?>
+                            </td>
+
+                            <td>
+                                <?= htmlspecialchars($row['area'] ?? '') ?>,
+                                <?= htmlspecialchars($row['city'] ?? '') ?>
+                            </td>
+
+                            <td>
+                                <?= htmlspecialchars($row['method']) ?>
+                            </td>
+
+                            <td>
+                                <span class="ngo-badge">
+                                    <?= htmlspecialchars($row['status']) ?>
+                                </span>
+                            </td>
+
+                            <td>
+                                <?= htmlspecialchars($row['created_at']) ?>
+                            </td>
+
+                        </tr>
+
+                    <?php endwhile; ?>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        <?php else: ?>
+
+            <div class="ngo-empty">
+                <div>🚚</div>
+                <h3>No pickup schedule</h3>
+                <p>Accepted donations will appear here.</p>
+            </div>
+
+        <?php endif; ?>
+
+    </section>
 
 </div>
 
-</body>
-</html>
+<?php
+$stmt->close();
+ngo_footer();
+?>
