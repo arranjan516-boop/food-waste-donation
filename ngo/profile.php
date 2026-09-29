@@ -1,12 +1,15 @@
 <?php
+session_start();
+
 require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
+require_once "../includes/ngo-layout.php";
 
-require_role("ngo");
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../login.php");
+    exit;
+}
 
-$user_id = $_SESSION["user_id"];
+$ngo_id = (int)$_SESSION['user_id'];
 
 $stmt = $conn->prepare("
     SELECT
@@ -24,103 +27,106 @@ $stmt = $conn->prepare("
         created_at
     FROM users
     WHERE user_id = ?
+    LIMIT 1
 ");
 
-$stmt->bind_param("i", $user_id);
+$stmt->bind_param("i", $ngo_id);
 $stmt->execute();
 
-$result = $stmt->get_result();
+$user = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
-if ($result->num_rows == 0) {
-    die("Profile not found.");
+if (!$user) {
+    header("Location: ../logout.php");
+    exit;
 }
 
-$user = $result->fetch_assoc();
+ngo_header("NGO Profile");
 ?>
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>My Profile</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
+<div class="ngo-content">
 
-<body>
+    <div class="ngo-page-header">
 
-<?php include "../includes/navbar.php"; ?>
+        <div>
+            <h1>My Profile</h1>
+            <p>View your NGO account information.</p>
+        </div>
 
-<div class="container">
+        <a
+            href="edit-profile.php"
+            class="ngo-btn ngo-btn-primary">
+            Edit Profile
+        </a>
 
-    <h1>My Profile</h1>
+    </div>
 
-    <?php if (!empty($user["profile_photo"])): ?>
+    <section class="ngo-section">
 
-        <img
-            src="../uploads/profiles/<?php echo htmlspecialchars($user["profile_photo"]); ?>"
-            width="150"
-            height="150"
-            style="object-fit:cover;border-radius:50%;"
-            alt="Profile"
-        >
+        <div class="ngo-profile-card">
 
-    <?php endif; ?>
+            <div class="ngo-profile-avatar">
 
-    <h2>
-        <?php echo htmlspecialchars($user["name"]); ?>
-    </h2>
+                <?php if (!empty($user['profile_photo'])): ?>
 
-    <p>
-        <strong>Email:</strong>
-        <?php echo htmlspecialchars($user["email"]); ?>
-    </p>
+                    <img
+                        src="../uploads/profiles/<?= htmlspecialchars($user['profile_photo']) ?>"
+                        alt="Profile">
 
-    <p>
-        <strong>Phone:</strong>
-        <?php echo htmlspecialchars($user["phone"]); ?>
-    </p>
+                <?php else: ?>
 
-    <p>
-        <strong>Role:</strong>
-        <?php echo htmlspecialchars($user["role"]); ?>
-    </p>
+                    <span>
+                        <?= strtoupper(substr($user['name'], 0, 1)) ?>
+                    </span>
 
-    <p>
-        <strong>Address:</strong>
-        <?php echo htmlspecialchars($user["address"]); ?>
-    </p>
+                <?php endif; ?>
 
-    <p>
-        <strong>City:</strong>
-        <?php echo htmlspecialchars($user["city"]); ?>
-    </p>
+            </div>
 
-    <p>
-        <strong>Area:</strong>
-        <?php echo htmlspecialchars($user["area"]); ?>
-    </p>
+            <h2><?= htmlspecialchars($user['name']) ?></h2>
 
-    <p>
-        <strong>Pincode:</strong>
-        <?php echo htmlspecialchars($user["pincode"]); ?>
-    </p>
+            <span class="ngo-badge">
+                <?= htmlspecialchars($user['role']) ?>
+            </span>
 
-    <p>
-        <strong>Account Status:</strong>
-        <?php echo htmlspecialchars($user["status"]); ?>
-    </p>
+            <div class="ngo-profile-details">
 
-    <p>
-        <strong>Joined:</strong>
-        <?php echo htmlspecialchars($user["created_at"]); ?>
-    </p>
+                <div>
+                    <strong>Email</strong>
+                    <span><?= htmlspecialchars($user['email']) ?></span>
+                </div>
 
-    <br>
+                <div>
+                    <strong>Phone</strong>
+                    <span><?= htmlspecialchars($user['phone'] ?? '-') ?></span>
+                </div>
 
-    <a href="edit-profile.php">
-        Edit Profile
-    </a>
+                <div>
+                    <strong>City</strong>
+                    <span><?= htmlspecialchars($user['city'] ?? '-') ?></span>
+                </div>
+
+                <div>
+                    <strong>Area</strong>
+                    <span><?= htmlspecialchars($user['area'] ?? '-') ?></span>
+                </div>
+
+                <div>
+                    <strong>Pincode</strong>
+                    <span><?= htmlspecialchars($user['pincode'] ?? '-') ?></span>
+                </div>
+
+                <div>
+                    <strong>Address</strong>
+                    <span><?= htmlspecialchars($user['address'] ?? '-') ?></span>
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
 
 </div>
 
-</body>
-</html>
+<?php ngo_footer(); ?>
