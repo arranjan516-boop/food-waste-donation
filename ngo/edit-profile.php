@@ -1,49 +1,47 @@
 <?php
+session_start();
+
 require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
+require_once "../includes/ngo-layout.php";
 
-require_role("ngo");
-
-$user_id = $_SESSION["user_id"];
-
-$message = "";
-$error = "";
-
-$stmt = $conn->prepare("
-    SELECT
-        name,
-        phone,
-        address,
-        city,
-        area,
-        pincode
-    FROM users
-    WHERE user_id = ?
-");
-
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-
-$result = $stmt->get_result();
-
-if ($result->num_rows == 0) {
-    die("Profile not found.");
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../login.php");
+    exit;
 }
 
-$user = $result->fetch_assoc();
+$ngo_id = (int)$_SESSION['user_id'];
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+$stmt = $conn->prepare("
+    SELECT *
+    FROM users
+    WHERE user_id = ?
+    LIMIT 1
+");
 
-    $name = trim($_POST["name"] ?? "");
-    $phone = trim($_POST["phone"] ?? "");
-    $address = trim($_POST["address"] ?? "");
-    $city = trim($_POST["city"] ?? "");
-    $area = trim($_POST["area"] ?? "");
-    $pincode = trim($_POST["pincode"] ?? "");
+$stmt->bind_param("i", $ngo_id);
+$stmt->execute();
 
-    if ($name === "") {
+$user = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+if (!$user) {
+    header("Location: ../logout.php");
+    exit;
+}
+
+$error = "";
+$success = "";
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    $name = trim($_POST['name'] ?? '');
+    $phone = trim($_POST['phone'] ?? '');
+    $address = trim($_POST['address'] ?? '');
+    $city = trim($_POST['city'] ?? '');
+    $area = trim($_POST['area'] ?? '');
+    $pincode = trim($_POST['pincode'] ?? '');
+
+    if ($name === '') {
 
         $error = "Name is required.";
 
@@ -69,136 +67,137 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $city,
             $area,
             $pincode,
-            $user_id
+            $ngo_id
         );
 
         if ($stmt->execute()) {
+            $success = "Profile updated successfully.";
 
-            $_SESSION["name"] = $name;
-
-            $message = "Profile updated successfully.";
-
-            $user["name"] = $name;
-            $user["phone"] = $phone;
-            $user["address"] = $address;
-            $user["city"] = $city;
-            $user["area"] = $area;
-            $user["pincode"] = $pincode;
-
+            $user['name'] = $name;
+            $user['phone'] = $phone;
+            $user['address'] = $address;
+            $user['city'] = $city;
+            $user['area'] = $area;
+            $user['pincode'] = $pincode;
         } else {
-
             $error = "Unable to update profile.";
         }
+
+        $stmt->close();
     }
 }
+
+ngo_header("Edit Profile");
 ?>
 
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Edit Profile</title>
-    <link rel="stylesheet" href="../assets/css/style.css">
-</head>
+<div class="ngo-content">
 
-<body>
+    <div class="ngo-page-header">
 
-<?php include "../includes/navbar.php"; ?>
+        <div>
+            <h1>Edit Profile</h1>
+            <p>Update your NGO account details.</p>
+        </div>
 
-<div class="container">
+        <a
+            href="profile.php"
+            class="ngo-btn ngo-btn-outline">
+            ← Back
+        </a>
 
-    <h1>Edit Profile</h1>
+    </div>
 
-    <?php if ($message): ?>
+    <section class="ngo-section">
 
-        <p>
-            <?php echo htmlspecialchars($message); ?>
-        </p>
+        <?php if ($error): ?>
 
-    <?php endif; ?>
+            <div class="ngo-alert ngo-alert-danger">
+                <?= htmlspecialchars($error) ?>
+            </div>
 
-    <?php if ($error): ?>
+        <?php endif; ?>
 
-        <p>
-            <?php echo htmlspecialchars($error); ?>
-        </p>
+        <?php if ($success): ?>
 
-    <?php endif; ?>
+            <div class="ngo-alert ngo-alert-success">
+                <?= htmlspecialchars($success) ?>
+            </div>
 
-    <form method="POST">
+        <?php endif; ?>
 
-        <label>Name</label>
-        <br>
+        <form method="POST" class="ngo-form">
 
-        <input
-            type="text"
-            name="name"
-            value="<?php echo htmlspecialchars($user["name"]); ?>"
-            required
-        >
+            <div class="ngo-form-grid">
 
-        <br><br>
+                <div>
+                    <label>Name</label>
+                    <input
+                        type="text"
+                        name="name"
+                        value="<?= htmlspecialchars($user['name'] ?? '') ?>"
+                        required>
+                </div>
 
-        <label>Phone</label>
-        <br>
+                <div>
+                    <label>Email</label>
+                    <input
+                        type="email"
+                        value="<?= htmlspecialchars($user['email'] ?? '') ?>"
+                        disabled>
+                </div>
 
-        <input
-            type="text"
-            name="phone"
-            value="<?php echo htmlspecialchars($user["phone"]); ?>"
-        >
+                <div>
+                    <label>Phone</label>
+                    <input
+                        type="text"
+                        name="phone"
+                        value="<?= htmlspecialchars($user['phone'] ?? '') ?>">
+                </div>
 
-        <br><br>
+                <div>
+                    <label>City</label>
+                    <input
+                        type="text"
+                        name="city"
+                        value="<?= htmlspecialchars($user['city'] ?? '') ?>">
+                </div>
 
-        <label>Address</label>
-        <br>
+                <div>
+                    <label>Area</label>
+                    <input
+                        type="text"
+                        name="area"
+                        value="<?= htmlspecialchars($user['area'] ?? '') ?>">
+                </div>
 
-        <textarea
-            name="address"
-            rows="4"
-        ><?php echo htmlspecialchars($user["address"]); ?></textarea>
+                <div>
+                    <label>Pincode</label>
+                    <input
+                        type="text"
+                        name="pincode"
+                        value="<?= htmlspecialchars($user['pincode'] ?? '') ?>">
+                </div>
 
-        <br><br>
+                <div class="ngo-form-full">
+                    <label>Address</label>
 
-        <label>City</label>
-        <br>
+                    <textarea
+                        name="address"
+                        rows="4"><?= htmlspecialchars($user['address'] ?? '') ?></textarea>
+                </div>
 
-        <input
-            type="text"
-            name="city"
-            value="<?php echo htmlspecialchars($user["city"]); ?>"
-        >
+            </div>
 
-        <br><br>
+            <button
+                type="submit"
+                class="ngo-btn ngo-btn-primary">
+                Save Changes
+            </button>
 
-        <label>Area</label>
-        <br>
+        </form>
 
-        <input
-            type="text"
-            name="area"
-            value="<?php echo htmlspecialchars($user["area"]); ?>"
-        >
-
-        <br><br>
-
-        <label>Pincode</label>
-        <br>
-
-        <input
-            type="text"
-            name="pincode"
-            value="<?php echo htmlspecialchars($user["pincode"]); ?>"
-        >
-
-        <br><br>
-
-        <button type="submit">
-            Save Changes
-        </button>
-
-    </form>
+    </section>
 
 </div>
 
-</body>
-</html>
+<?php ngo_footer(); ?>
