@@ -1,81 +1,99 @@
 <?php
-require_once __DIR__ . '/config/constants.php';
-require_once __DIR__ . '/config/database.php';
-require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/includes/functions.php';
+// login.php
+$pageTitle = 'Login';
+require_once __DIR__ . '/includes/header.php';
 
-if (!empty($_SESSION['user_id']) && !empty($_SESSION['role'])) {
-    redirect(role_dashboard($_SESSION['role']));
+// If already logged in → redirect
+if (is_logged_in()) {
+    redirect(dashboard_url_for_role(current_role()));
 }
 
-$errors = [];
-$email  = '';
+$error = '';
+$email = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email    = strtolower(trim($_POST['email'] ?? ''));
-    $password = $_POST['password'] ?? '';
+    verify_csrf();
 
-    if (!csrf_verify()) {
-        $errors[] = 'Your session expired. Please try again.';
-    } elseif ($email === '' || $password === '') {
-        $errors[] = 'Enter your email and password.';
+    $email    = post('email');
+    $password = post('password');
+
+    if (!$email || !$password) {
+        $error = 'Please enter email and password.';
     } else {
-        $stmt = $conn->prepare("SELECT user_id, name, password, role, status FROM users WHERE email = ? LIMIT 1");
-        $stmt->bind_param('s', $email);
-        $stmt->execute();
-        $user = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = :e LIMIT 1");
+        $stmt->execute([':e' => $email]);
+        $user = $stmt->fetch();
 
-        if (!$user || !password_verify($password, $user['password'])) {
-            $errors[] = 'The email or password is not correct.';
-        } elseif ($user['status'] !== 'active') {
-            $errors[] = 'Your account is not active. Please contact the admin.';
+        if (!$user) {
+            $error = 'No account found with that email.';
+        } elseif ($user['status'] === 'blocked') {
+            $error = 'Your account has been blocked. Contact support.';
+        } elseif ($user['status'] === 'inactive') {
+            $error = 'Your account is inactive. Contact support.';
+        } elseif (!password_verify($password, $user['password'])) {
+            $error = 'Incorrect password.';
         } else {
-            session_regenerate_id(true);
-            $_SESSION['user_id'] = (int)$user['user_id'];
-            $_SESSION['name']    = $user['name'];
-            $_SESSION['role']    = $user['role'];
-            redirect(role_dashboard($user['role']));
+            login_user($user);
+
+            // Update last login (optional — silent if column doesn't exist)
+            try {
+                $pdo->prepare("UPDATE users SET updated_at = NOW() WHERE user_id = :u")
+                    ->execute([':u' => $user['user_id']]);
+            } catch (Exception $e) { /* ignore */ }
+
+            set_flash('success', 'Welcome back, ' . $user['name'] . '!');
+            redirect(dashboard_url_for_role($user['role']));
         }
     }
 }
-
-$page_title = 'Login';
-$layout     = 'auth';
-include __DIR__ . '/includes/header.php';
 ?>
-<div class="auth-card">
-    <div class="auth-form">
-        <?= brand_logo() ?>
-        <h1>Welcome back</h1>
-        <p class="auth-sub">Log in to your account.</p>
 
-        <?php render_flash(); ?>
-        <?php if ($errors): ?>
-            <div class="alert alert-error" role="alert"><ul><?php foreach ($errors as $er): ?><li><?= e($er) ?></li><?php endforeach; ?></ul></div>
-        <?php endif; ?>
+<section class="auth-section">
+    <div class="auth-container auth-login">
+        <!-- Left: Form -->
+        <div class="auth-form-wrap">
+            <h1>Welcome Back!</h1>
+            <p class="text-muted mb-3">Login to your account</p>
 
-        <form method="post" novalidate>
-            <?= csrf_field() ?>
-            <div class="field">
-                <label for="email">Email address</label>
-                <input type="email" id="email" name="email" value="<?= e($email) ?>" autocomplete="email" required>
-            </div>
-            <div class="field">
-                <label for="password">Password</label>
-                <div class="input-wrap">
-                    <input type="password" id="password" name="password" autocomplete="current-password" required>
-                    <button type="button" class="toggle-pass" data-toggle-pass="password">Show</button>
+            <?php if ($error): ?>
+                <div class="toast toast-error"><?= sanitize($error) ?></div>
+            <?php endif; ?>
+
+            <form method="post" data-validate>
+                <?= csrf_field() ?>
+
+                <div class="form-group">
+                    <label class="form-label">Email Address</label>
+                    <input type="email" name="email" class="form-control" required
+                           value="<?= sanitize($email) ?>" autofocus>
                 </div>
-            </div>
-            <p class="text-right"><a href="<?= BASE_URL ?>forgot-password.php">Forgot password?</a></p>
-            <button class="btn btn-primary btn-block" type="submit">Log in</button>
-        </form>
-        <p class="auth-switch">Don't have an account? <a href="<?= BASE_URL ?>register.php">Register</a></p>
+
+                <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <input type="password" name="password" class="form-control" required>
+                </div>
+
+                <div class="flex-between mb-2">
+                    <label style="font-size:13px">
+                        <input type="checkbox" name="remember"> Remember me
+                    </label>
+                    <a href="<?= BASE_URL ?>forgot-password.php" style="font-size:13px">Forgot Password?</a>
+                </div>
+
+                <button class="btn btn-primary btn-block btn-lg">Login</button>
+
+                <p class="text-center mt-2">
+                    Don't have an account? <a href="<?= BASE_URL ?>register.php">Register</a>
+                </p>
+            </form>
+        </div>
+
+        <!-- Right: Illustration -->
+        <div class="auth-side">
+            <img src="<?= BASE_URL ?>assets/images/hero-food.jpg" alt="Good food brings people together">
+            <h2>Good Food Brings People Together.</h2>
+        </div>
     </div>
-    <div class="auth-side">
-        <h2>Good food brings people together</h2>
-        <p>Share what you have. Receive what you need.</p>
-    </div>
-</div>
-<?php include __DIR__ . '/includes/footer.php'; ?>
+</section>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
