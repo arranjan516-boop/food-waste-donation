@@ -156,3 +156,43 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 .food-card-meta { font-size: 13px; color: var(--gray-500); display: flex; flex-wrap: wrap; gap: 10px; }
 .food-card-actions { display: flex; gap: 8px; margin-top: 10px; }
 .food-card-actions .btn { flex: 1; justify-content: center; padding: 8px; font-size: 13px; }
+/* ---------- Navbar mobile ---------- */
+.nav-toggle { display: none; background: none; border: none; font-size: 22px; cursor: pointer; color: var(--green-dark); }
+@media (max-width: 900px) {
+    .nav-toggle { display: block; }
+    .nav-links {
+        position: absolute; top: 68px; left: 0; right: 0;
+        background: #fff; flex-direction: column; gap: 0;
+        padding: 10px 0; box-shadow: var(--shadow); display: none;
+    }
+    .nav-links.open { display: flex; }
+    .nav-links li { width: 100%; }
+    .nav-links a { padding: 12px 20px; width: 100%; }
+    .bell-link { padding: 12px 20px; }
+}
+
+/* ---------- Footer ---------- */
+.site-footer {
+    background: var(--green-dark);
+    color: rgba(255,255,255,.82);
+    padding: 50px 0 20px;
+    margin-top: 60px;
+}
+.footer-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr;
+    gap: 30px;
+}
+@media (max-width: 800px) { .footer-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 480px) { .footer-grid { grid-template-columns: 1fr; } }
+.footer-grid h4 { color: #fff; font-size: 14px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.footer-grid ul { list-style: none; }
+.footer-grid li { margin-bottom: 8px; font-size: 14px; }
+.footer-grid a { color: rgba(255,255,255,.82); }
+.footer-grid a:hover { color: #fff; }
+.brand-light { color: #fff; margin-bottom: 10px; }
+.footer-tag { font-size: 14px; }
+.footer-bottom {
+    border-top: 1px solid rgba(255,255,255,.15);
+    margin-top: 30px; padding-top: 20px; text-align: center; font-size: 13px;
+}
