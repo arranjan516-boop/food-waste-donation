@@ -1,59 +1,42 @@
 <?php
+// includes/notification-functions.php
+require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/location-functions.php';
 
-/*
-|--------------------------------------------------------------------------
-| Notification Helper Functions
-|--------------------------------------------------------------------------
-*/
-
-/* Get unread notification count */
-function get_unread_notification_count($user_id)
-{
-    global $conn;
-
-    $sql = "SELECT COUNT(*) AS total
-            FROM notifications
-            WHERE user_id = ? AND is_read = 0";
-
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-
-    $result = $stmt->get_result();
-    $row = $result->fetch_assoc();
-
-    return $row['total'] ?? 0;
+function notify($pdo, $userId, $title, $message, $type = 'general', $relatedId = null) {
+    $sql = "INSERT INTO notifications (user_id, title, message, notification_type, related_id)
+            VALUES (:uid, :t, :m, :ty, :rid)";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([
+        ':uid' => $userId,
+        ':t'   => $title,
+        ':m'   => $message,
+        ':ty'  => $type,
+        ':rid' => $relatedId,
+    ]);
 }
 
-
-/* Mark one notification as read */
-function mark_notification_as_read($notification_id, $user_id)
-{
-    global $conn;
-
-    $sql = "UPDATE notifications
-            SET is_read = 1
-            WHERE notification_id = ?
-            AND user_id = ?";
-
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("ii", $notification_id, $user_id);
-
-    return $stmt->execute();
+/**
+ * Notify nearby users of a given role about a new donation.
+ */
+function notify_nearby_role($pdo, $role, $lat, $lng, $title, $message, $type = 'donation', $relatedId = null) {
+    $users = users_within_km($pdo, $role, $lat, $lng);
+    foreach ($users as $u) {
+        $msg = $message . " (" . $u['distance_km'] . " KM away)";
+        notify($pdo, $u['user_id'], $title, $msg, $type, $relatedId);
+    }
+    return count($users);
 }
 
+function notify_admins($pdo, $title, $message, $type = 'admin', $relatedId = null) {
+    $stmt = $pdo->query("SELECT user_id FROM users WHERE role = 'admin' AND status = 'active'");
+    foreach ($stmt->fetchAll() as $a) {
+        notify($pdo, $a['user_id'], $title, $message, $type, $relatedId);
+    }
+}
 
-/* Mark all notifications as read */
-function mark_all_notifications_as_read($user_id)
-{
-    global $conn;
-
-    $sql = "UPDATE notifications
-            SET is_read = 1
-            WHERE user_id = ?";
-
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $user_id);
-
-    return $stmt->execute();
+function unread_count($pdo, $userId) {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = :u AND is_read = 0");
+    $stmt->execute([':u' => $userId]);
+    return (int)$stmt->fetchColumn();
 }
