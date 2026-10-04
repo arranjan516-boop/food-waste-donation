@@ -1,1 +1,38 @@
+/* ================================
+   FoodShare — responsive tweaks
+   ================================ */
 
+/* Tablet */
+@media (max-width: 992px) {
+    .hero h1 { font-size: 36px; }
+    .section-title { font-size: 24px; }
+    .contact-strip { padding: 24px; }
+    .contact-strip h2 { font-size: 20px; }
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+    .hero { padding: 40px 0; }
+    .hero h1 { font-size: 28px; }
+    .hero p  { font-size: 15px; }
+    .hero-cta .btn { width: 100%; justify-content: center; }
+
+    .section { padding: 40px 0; }
+    .section-title { font-size: 22px; }
+    .section-sub   { font-size: 14px; }
+
+    .stat-card { padding: 14px; }
+    .stat-card .stat-value { font-size: 18px; }
+
+    .contact-strip { flex-direction: column; text-align: center; }
+    .contact-strip-form { width: 100%; }
+    .contact-strip-form .form-control { min-width: 0; width: 100%; }
+    .contact-strip-form .btn { width: 100%; }
+
+    .filter-bar { padding: 12px; }
+
+    .food-card img { height: 140px; }
+}
+
+/* Hide scrollbars on horizontal filter bars */
+.filter-bar::-webkit-scrollbar { display: none; }
