@@ -21,6 +21,7 @@ $__bellCount = is_logged_in() ? unread_count($pdo, current_user_id()) : 0;
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/style.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/auth.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/food.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/responsive.css">
     <?php if (!empty($extraCss)) foreach ((array)$extraCss as $c): ?>
