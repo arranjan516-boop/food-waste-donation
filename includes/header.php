@@ -1,98 +1,34 @@
 <?php
+// includes/header.php
+if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/auth.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-require_once __DIR__ . "/../config/constants.php";
-require_once __DIR__ . "/functions.php";
-
+$__pageTitle = $pageTitle ?? SITE_NAME;
+$__bellCount = is_logged_in() ? unread_count($pdo, current_user_id()) : 0;
 ?>
-
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= sanitize($__pageTitle) ?> — <?= SITE_NAME ?></title>
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+    <link rel="icon" href="<?= BASE_URL ?>assets/images/logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-    <title>
-        <?= e($page_title ?? SITE_NAME) ?>
-    </title>
-
-    <link
-        rel="stylesheet"
-        href="<?= BASE_URL ?>assets/css/style.css"
-    >
-
+    <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/style.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/food.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/responsive.css">
+    <?php if (!empty($extraCss)) foreach ((array)$extraCss as $c): ?>
+        <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/<?= sanitize($c) ?>">
+    <?php endforeach; ?>
 </head>
-
 <body>
+<?php require_once __DIR__ . '/navbar.php'; ?>
 
-<header>
-
-    <nav class="navbar">
-
-        <div class="nav-container">
-
-            <a
-                href="<?= BASE_URL ?>index.php"
-                class="logo"
-            >
-                Food Waste Donation
-            </a>
-
-
-            <div class="nav-links">
-
-                <a href="<?= BASE_URL ?>index.php">
-                    Home
-                </a>
-
-                <a href="<?= BASE_URL ?>about.php">
-                    About
-                </a>
-
-                <a href="<?= BASE_URL ?>how-it-works.php">
-                    How It Works
-                </a>
-
-                <a href="<?= BASE_URL ?>available-food.php">
-                    Available Food
-                </a>
-
-
-                <?php if (!empty($_SESSION["user_id"])): ?>
-
-                    <a href="<?= BASE_URL ?>logout.php">
-                        Logout
-                    </a>
-
-                <?php else: ?>
-
-                    <a href="<?= BASE_URL ?>login.php">
-                        Login
-                    </a>
-
-                    <a href="<?= BASE_URL ?>register.php">
-                        Register
-                    </a>
-
-                <?php endif; ?>
-
-            </div>
-
-        </div>
-
-    </nav>
-
-</header>
-
-
-<main class="container">
+<main class="site-main">
+<?php render_flash(); ?>
