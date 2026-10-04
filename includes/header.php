@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/notification-functions.php';
 
 $__pageTitle = $pageTitle ?? SITE_NAME;
 $__bellCount = is_logged_in() ? unread_count($pdo, current_user_id()) : 0;
