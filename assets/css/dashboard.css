@@ -83,4 +83,36 @@
 }
 .stat-card .icon-box {
     width: 46px; height: 46px; border-radius: 12px;
-    display: flex; align-items: center; justify-content
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+}
+.stat-card .icon-box.green  { background: var(--green-light);  color: var(--green-dark); }
+.stat-card .icon-box.orange { background: #FFF3E0;             color: var(--orange); }
+.stat-card .icon-box.blue   { background: #E3F2FD;             color: var(--blue); }
+.stat-card .icon-box.purple { background: #F3E5F5;             color: var(--purple); }
+.stat-card .icon-box.yellow { background: #FFF8E1;             color: #F57F17; }
+.stat-card .stat-value { font-size: 22px; font-weight: 700; color: var(--gray-900); line-height: 1.1; }
+.stat-card .stat-label { font-size: 12px; color: var(--gray-500); text-transform: uppercase; letter-spacing: .04em; }
+
+/* ---- Dashboard table ---- */
+.table-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; }
+.table-card-header { padding: 16px 20px; border-bottom: 1px solid var(--gray-100); display: flex; justify-content: space-between; align-items: center; }
+.table-card-header h3 { font-size: 15px; font-weight: 600; }
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { text-align: left; padding: 12px 20px; font-size: 14px; border-bottom: 1px solid var(--gray-100); }
+.table th { background: var(--gray-50); font-weight: 600; color: var(--gray-700); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.table tr:hover td { background: var(--gray-50); }
+.table img.thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; }
+
+/* ---- Mobile ---- */
+.dash-toggle { display: none; font-size: 22px; background: none; border: none; cursor: pointer; }
+@media (max-width: 860px) {
+    .dash { grid-template-columns: 1fr; }
+    .sidebar {
+        position: fixed; left: -260px; top: 0; width: 240px; z-index: 200;
+        transition: left .25s;
+    }
+    .sidebar.open { left: 0; }
+    .dash-toggle { display: block; }
+    .dash-content { padding: 18px; }
+}
