@@ -1,47 +1,120 @@
-/* =========================================
-   FOOD IMAGE STYLING
-   ========================================= */
+/* ================================
+   FoodShare — public content styles
+   ================================ */
 
-/* Normal food card image */
-.food-image {
-    width: 100%;
-    max-width: 350px;
-    height: 220px;
-    object-fit: cover;
-    display: block;
-    border-radius: 12px;
+/* ---- Steps (How it works) ---- */
+.steps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 22px;
+}
+.step {
+    background: #fff; border-radius: var(--radius);
+    padding: 26px 22px; text-align: center;
+    box-shadow: var(--shadow-sm); border: 1px solid var(--gray-100);
+    transition: transform .2s;
+}
+.step:hover { transform: translateY(-4px); }
+.step-num {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: var(--green); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 18px;
+    margin: 0 auto 14px;
+}
+.step h3 { font-size: 16px; margin-bottom: 8px; color: var(--green-dark); }
+.step p  { font-size: 14px; color: var(--gray-500); }
+
+/* ---- Impact ---- */
+.impact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+}
+.impact-card {
+    background: #fff; border-radius: var(--radius);
+    padding: 26px; text-align: center; box-shadow: var(--shadow-sm);
+}
+.impact-num   { font-size: 32px; font-weight: 700; color: var(--green-dark); }
+.impact-label { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--gray-500); margin-top: 4px; }
+
+/* ---- Helper cards ---- */
+.helpers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 22px;
+}
+.helper-card {
+    background: #fff; border-radius: var(--radius);
+    padding: 26px; box-shadow: var(--shadow-sm);
+    text-align: center;
+}
+.helper-icon { font-size: 34px; margin-bottom: 10px; }
+.helper-card h3 { font-size: 17px; margin-bottom: 8px; color: var(--green-dark); }
+.helper-card p  { font-size: 14px; color: var(--gray-500); }
+
+/* ---- Contact strip ---- */
+.contact-strip {
+    background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+    border-radius: 16px;
+    padding: 32px 36px;
+    display: flex; align-items: center; justify-content: space-between; gap: 24px;
+    flex-wrap: wrap;
+}
+.contact-strip-form { display: flex; gap: 10px; flex-wrap: wrap; }
+.contact-strip-form .form-control { min-width: 240px; }
+
+/* ---- Contact page ---- */
+.contact-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 30px; }
+@media (max-width: 760px) { .contact-grid { grid-template-columns: 1fr; } }
+.contact-info { display: flex; flex-direction: column; gap: 14px; }
+.contact-card {
+    background: #fff; padding: 20px; border-radius: var(--radius);
+    box-shadow: var(--shadow-sm); text-align: center;
 }
 
+/* ---- About page ---- */
+.about-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 40px; align-items: start; }
+@media (max-width: 800px) { .about-grid { grid-template-columns: 1fr; } }
+.about-grid img { border-radius: var(--radius); box-shadow: var(--shadow); }
+.about-grid h2 { font-size: 20px; color: var(--green-dark); margin-bottom: 8px; }
+.about-grid p, .about-grid li { font-size: 15px; color: var(--gray-700); }
+.check-list { list-style: none; padding: 0; }
+.check-list li { padding-left: 26px; position: relative; margin-bottom: 8px; }
+.check-list li::before { content: '✓'; position: absolute; left: 0; color: var(--green); font-weight: 700; }
 
-/* Food card images */
-.food-card img {
-    width: 100%;
-    max-width: 350px;
-    height: 220px;
-    object-fit: cover;
-    display: block;
-    border-radius: 12px;
+/* ---- Filter bar ---- */
+.filter-bar {
+    display: grid;
+    grid-template-columns: 1.4fr repeat(4, 1fr) auto auto;
+    gap: 10px;
+    background: #fff;
+    padding: 16px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 26px;
 }
+@media (max-width: 900px) { .filter-bar { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 500px) { .filter-bar { grid-template-columns: 1fr; } }
 
-
-/* Large image on food details page */
-.food-details-image {
-    width: 100%;
-    max-width: 500px;
-    height: 350px;
-    object-fit: cover;
-    display: block;
-    margin: 0 auto;
-    border-radius: 12px;
+/* ---- Flow diagram ---- */
+.flow-diagram {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    gap: 8px; align-items: center; margin-top: 20px;
 }
-
-
-/* Uploaded food images */
-img[src*="uploads/food"] {
-    max-width: 350px;
-    max-height: 220px;
-    width: 100%;
-    height: 220px;
-    object-fit: cover;
-    border-radius: 12px;
+.flow-step {
+    padding: 10px 16px; border-radius: 999px;
+    background: #fff; border: 2px solid var(--green-light);
+    color: var(--green-dark); font-size: 13px; font-weight: 600;
 }
+.flow-step-done { background: var(--green); color: #fff; border-color: var(--green); }
+.flow-arrow { color: var(--gray-300); font-weight: 700; }
+
+/* ---- Empty state ---- */
+.empty-state {
+    text-align: center; padding: 60px 20px;
+    background: #fff; border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.empty-icon { font-size: 52px; margin-bottom: 12px; }
+.empty-state h3 { color: var(--gray-700); margin-bottom: 6px; }
+.empty-state p  { color: var(--gray-500); font-size: 14px; }
