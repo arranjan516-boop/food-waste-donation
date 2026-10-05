@@ -1,14 +1,17 @@
 <?php
 // donor/edit-profile.php
-$pageTitle = 'Edit Profile';
-require_once __DIR__ . '/../includes/dashboard-header.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
 
+require_login();
 $uid = current_user_id();
+
 $stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = :u");
 $stmt->execute([':u' => $uid]);
 $u = $stmt->fetch();
 
 $errors = [];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
 
@@ -46,6 +49,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(BASE_URL . 'donor/profile.php');
     }
 }
+
+// ---- NOW safe to output HTML ----
+$pageTitle = 'Edit Profile';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 ?>
 
 <?php if ($errors): ?>
