@@ -1,257 +1,222 @@
 <?php
+// collector/active-delivery.php
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/notification-functions.php';
 
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
-
-require_role("collector");
-
-$collector_id = $_SESSION["user_id"];
-
-$delivery_id = (int)($_GET["id"] ?? 0);
-
-if ($delivery_id <= 0) {
-    die("Invalid delivery.");
+require_login();
+if (current_role() !== 'collector' && current_role() !== 'admin') {
+    set_flash('error', 'Access denied.');
+    redirect(BASE_URL . 'index.php');
 }
 
-$sql = "
-    SELECT
-        d.*,
+$uid   = current_user_id();
+$taskId = int_get('id');
 
-        fd.food_name,
-        fd.food_category,
-        fd.description,
-        fd.quantity,
-        fd.unit,
-        fd.food_photo,
-        fd.city AS donor_city,
-        fd.area AS donor_area,
+$stmt = $pdo->prepare("
+    SELECT ct.*, d.donation_id, d.food_name, d.food_photo, d.unit, d.quantity, d.people_served,
+           d.address AS pickup_address, d.area AS pickup_area, d.city AS pickup_city,
+           d.best_before, d.urgency,
+           u.name AS donor_name, u.phone AS donor_phone,
+           fr.request_id, fr.recipient_id, fr.contact_number AS recipient_phone,
+           fr.delivery_address AS recipient_address,
+           ru.name AS recipient_name, ru.city AS recipient_city, ru.area AS recipient_area
+    FROM collector_tasks ct
+    JOIN food_donations d ON d.donation_id = ct.donation_id
+    JOIN users u ON u.user_id = d.donor_id
+    LEFT JOIN food_requests fr ON fr.request_id = ct.request_id
+    LEFT JOIN users ru ON ru.user_id = fr.recipient_id
+    WHERE ct.task_id = :t AND ct.collector_id = :u
+");
+$stmt->execute([':t' => $taskId, ':u' => $uid]);
+$t = $stmt->fetch();
 
-        donor.name AS donor_name,
-        donor.phone AS donor_phone,
+if (!$t) { set_flash('error', 'Task not found.'); redirect(BASE_URL . 'collector/my-tasks.php'); }
 
-        recipient.name AS recipient_name,
-        recipient.phone AS recipient_phone,
-        recipient.address AS recipient_address,
-        recipient.city AS recipient_city,
-        recipient.area AS recipient_area
+$errors = [];
+$statusFlow = [
+    'accepted'       => ['pickup_started', '🚗 Start Pickup'],
+    'pickup_started' => ['picked_up',      '🍱 Food Collected'],
+    'picked_up'      => ['delivering',     '🚚 Start Delivery'],
+    'delivering'     => ['awaiting_proof', '📍 Reached Recipient'],
+];
 
-    FROM deliveries d
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $action = post('action');
 
-    INNER JOIN food_donations fd
-        ON d.donation_id = fd.donation_id
+    // ---- Advance status ----
+    if ($action === 'advance') {
+        $cur = $t['status'];
+        if (isset($statusFlow[$cur])) {
+            $next = $statusFlow[$cur][0];
+            $pdo->prepare("UPDATE collector_tasks SET status=:s, pickup_time = CASE WHEN :s='picked_up' THEN NOW() ELSE pickup_time END WHERE task_id=:t")
+                ->execute([':s' => $next, ':t' => $taskId]);
 
-    INNER JOIN users donor
-        ON fd.donor_id = donor.user_id
+            // sync donation status
+            $donationStatus = match ($next) {
+                'pickup_started' => 'pickup_scheduled',
+                'picked_up'      => 'picked_up',
+                'delivering'     => 'out_for_delivery',
+                'awaiting_proof' => 'out_for_delivery',
+                default          => null,
+            };
+            if ($donationStatus) {
+                $pdo->prepare("UPDATE food_donations SET status=:s WHERE donation_id=:d")
+                    ->execute([':s' => $donationStatus, ':d' => $t['donation_id']]);
+            }
 
-    LEFT JOIN food_requests fr
-        ON d.request_id = fr.request_id
+            // history
+            $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by)
+                           VALUES (:d, :old, :new, :u)")
+                ->execute([':d' => $t['donation_id'], ':old' => $t['status'], ':new' => $next, ':u' => $uid]);
 
-    LEFT JOIN users recipient
-        ON fr.recipient_id = recipient.user_id
+            // notify recipient on pickup
+            if ($next === 'picked_up' && $t['recipient_id']) {
+                notify($pdo, $t['recipient_id'], '🍱 Food Collected',
+                    'Your food has been collected and is on the way.', 'delivery', $t['donation_id']);
+            }
 
-    WHERE
-        d.delivery_id = ?
-        AND d.collector_id = ?
+            set_flash('success', 'Status updated.');
+            redirect(BASE_URL . 'collector/active-delivery.php?id=' . $taskId);
+        }
+    }
 
-    LIMIT 1
-";
+    // ---- Upload delivery proof ----
+    if ($action === 'upload_proof') {
+        if ($t['status'] !== 'awaiting_proof' && $t['status'] !== 'delivering') {
+            $errors[] = 'You cannot upload proof at this stage.';
+        } else {
+            $proof = null;
+            if (!empty($_FILES['proof_image']['name'])) {
+                $proof = upload_image($_FILES['proof_image'], PROOF_UPLOAD, PROOF_UPLOAD_URL);
+            }
+            if (!$proof) {
+                $errors[] = 'Please upload a valid delivery proof photo.';
+            } else {
+                $pdo->prepare("
+                    INSERT INTO delivery_proofs
+                      (donation_id, request_id, uploaded_by, uploaded_by_role, proof_image, delivery_note)
+                    VALUES (:d, :r, :u, 'collector', :img, :note)
+                ")->execute([
+                    ':d' => $t['donation_id'],
+                    ':r' => $t['request_id'],
+                    ':u' => $uid,
+                    ':img' => $proof,
+                    ':note' => post('delivery_note'),
+                ]);
 
-$stmt = $conn->prepare($sql);
+                // Update collector task
+                $pdo->prepare("UPDATE collector_tasks SET status='delivered', delivery_time=NOW() WHERE task_id=:t")
+                    ->execute([':t' => $taskId]);
 
-if (!$stmt) {
-    die("Database error: " . $conn->error);
+                // Update donation
+                $pdo->prepare("UPDATE food_donations SET status='delivered' WHERE donation_id=:d")
+                    ->execute([':d' => $t['donation_id']]);
+
+                $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by)
+                               VALUES (:d, :old, 'delivered', :u)")
+                    ->execute([':d' => $t['donation_id'], ':old' => $t['status'], ':u' => $uid]);
+
+                // Notifications
+                notify($pdo, $t['donor_id'], '✅ Food Delivered',
+                    'Your donated food has been delivered successfully. Delivery proof uploaded.',
+                    'delivered', $t['donation_id']);
+
+                if ($t['recipient_id']) {
+                    notify($pdo, $t['recipient_id'], '🍱 Food Delivered',
+                        'Your food has been delivered. Delivery proof is available. Please confirm receipt.',
+                        'delivered', $t['donation_id']);
+                }
+
+                notify_admins($pdo, '📷 Delivery Proof Uploaded',
+                    'Collector uploaded proof for donation #' . $t['donation_id'],
+                    'proof', $t['donation_id']);
+
+                set_flash('success', 'Delivery proof submitted!');
+                redirect(BASE_URL . 'collector/completed-tasks.php');
+            }
+        }
+    }
 }
 
-$stmt->bind_param(
-    "ii",
-    $delivery_id,
-    $collector_id
-);
-
-$stmt->execute();
-
-$result = $stmt->get_result();
-
-if ($result->num_rows === 0) {
-    $stmt->close();
-    die("Active delivery not found.");
-}
-
-$task = $result->fetch_assoc();
-
-$stmt->close();
-
-require_once "../includes/header.php";
+$pageTitle = 'Active Delivery';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 ?>
 
-<div class="container">
+<?php if ($errors): ?>
+    <div class="toast toast-error"><?php foreach ($errors as $e): ?><?= sanitize($e) ?><br><?php endforeach; ?></div>
+<?php endif; ?>
 
-    <h1>Active Delivery</h1>
-
-
-    <div class="delivery-card">
-
-        <?php if (!empty($task["food_photo"])): ?>
-
-            <img
-                src="../uploads/food/<?= htmlspecialchars($task["food_photo"]) ?>"
-                class="food-image"
-                alt="Food"
-            >
-
-        <?php endif; ?>
-
-
-        <h2>
-            <?= htmlspecialchars($task["food_name"]) ?>
-        </h2>
-
-
-        <h3>Food Details</h3>
-
-        <p>
-            <strong>Category:</strong>
-            <?= htmlspecialchars($task["food_category"]) ?>
-        </p>
-
-        <p>
-            <strong>Quantity:</strong>
-            <?= htmlspecialchars($task["quantity"]) ?>
-            <?= htmlspecialchars($task["unit"]) ?>
-        </p>
-
-
-        <h3>Pickup From Donor</h3>
-
-        <p>
-            <strong>Name:</strong>
-            <?= htmlspecialchars($task["donor_name"]) ?>
-        </p>
-
-        <p>
-            <strong>Phone:</strong>
-            <?= htmlspecialchars($task["donor_phone"]) ?>
-        </p>
-
-        <p>
-            <strong>Location:</strong>
-            <?= htmlspecialchars($task["donor_area"]) ?>,
-            <?= htmlspecialchars($task["donor_city"]) ?>
-        </p>
-
-
-        <h3>Deliver To Recipient</h3>
-
-        <?php if (!empty($task["recipient_name"])): ?>
-
-            <p>
-                <strong>Name:</strong>
-                <?= htmlspecialchars($task["recipient_name"]) ?>
-            </p>
-
-            <p>
-                <strong>Phone:</strong>
-                <?= htmlspecialchars($task["recipient_phone"]) ?>
-            </p>
-
-            <p>
-                <strong>Address:</strong>
-                <?= htmlspecialchars($task["recipient_address"]) ?>
-            </p>
-
-            <p>
-                <strong>Location:</strong>
-                <?= htmlspecialchars($task["recipient_area"]) ?>,
-                <?= htmlspecialchars($task["recipient_city"]) ?>
-            </p>
-
-        <?php endif; ?>
-
-
-        <h3>Current Status</h3>
-
-        <div class="status">
-            <?= htmlspecialchars($task["status"]) ?>
-        </div>
-
-
-        <div class="actions">
-
-            <a
-                href="update-status.php?id=<?= $delivery_id ?>&status=pickup"
-                class="btn"
-            >
-                Confirm Pickup
-            </a>
-
-            <a
-                href="update-status.php?id=<?= $delivery_id ?>&status=delivered"
-                class="btn success"
-            >
-                Mark Delivered
-            </a>
-
-        </div>
-
+<div class="card mb-3">
+    <div class="flex-between mb-2">
+        <h2><?= sanitize($t['food_name']) ?></h2>
+        <?= status_badge($t['status']) ?>
     </div>
 
+    <div class="details-grid">
+        <img src="<?= food_photo_url($t['food_photo']) ?>" alt="">
+        <div>
+            <h4 style="margin-bottom:8px">📍 Pickup From</h4>
+            <p><strong><?= sanitize($t['donor_name']) ?></strong></p>
+            <p><?= sanitize($t['pickup_address']) ?>, <?= sanitize($t['pickup_area']) ?>, <?= sanitize($t['pickup_city']) ?></p>
+            <p><strong>Phone:</strong> <?= sanitize($t['donor_phone'] ?: '—') ?></p>
+
+            <h4 style="margin:16px 0 8px">🏁 Deliver To</h4>
+            <p><strong><?= sanitize($t['recipient_name'] ?: 'Recipient') ?></strong></p>
+            <?php if ($t['recipient_address']): ?>
+                <p><?= sanitize($t['recipient_address']) ?></p>
+            <?php elseif ($t['recipient_city']): ?>
+                <p><?= sanitize($t['recipient_area'] ?: '') ?> <?= sanitize($t['recipient_city']) ?></p>
+            <?php endif; ?>
+            <p><strong>Phone:</strong> <?= sanitize($t['recipient_phone'] ?: '—') ?></p>
+
+            <p style="margin-top:12px"><strong>Quantity:</strong> <?= (float)$t['quantity'] ?> <?= sanitize($t['unit']) ?></p>
+        </div>
+    </div>
 </div>
 
+<?php if (isset($statusFlow[$t['status']])): ?>
+    <div class="card mb-3">
+        <h3 class="card-title">Next Step</h3>
+        <form method="post">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="advance">
+            <button class="btn btn-primary btn-lg"><?= $statusFlow[$t['status']][1] ?></button>
+        </form>
+    </div>
+<?php endif; ?>
+
+<?php if (in_array($t['status'], ['delivering','awaiting_proof'])): ?>
+    <div class="card">
+        <h3 class="card-title">📷 Upload Delivery Proof</h3>
+        <p class="text-muted mb-2">Mandatory — take a photo of the food being handed over.</p>
+
+        <form method="post" enctype="multipart/form-data">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="upload_proof">
+
+            <div class="form-group">
+                <label class="form-label">Delivery Proof Photo *</label>
+                <input type="file" name="proof_image" class="form-control" required accept="image/jpeg,image/png,image/webp"
+                       onchange="previewImage(this, document.getElementById('proof-preview'))">
+                <img id="proof-preview" style="display:none;max-width:260px;margin-top:10px;border-radius:10px">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Delivery Note (optional)</label>
+                <textarea name="delivery_note" class="form-control" rows="2" placeholder="e.g. Food delivered successfully to the recipient."></textarea>
+            </div>
+
+            <button class="btn btn-primary btn-lg">Submit Delivery Proof</button>
+        </form>
+    </div>
+<?php endif; ?>
 
 <style>
-
-.container {
-    max-width: 900px;
-    margin: 30px auto;
-    padding: 20px;
-}
-
-.delivery-card {
-    padding: 30px;
-    background: white;
-    border-radius: 15px;
-    box-shadow: 0 3px 12px rgba(0,0,0,.08);
-}
-
-.food-image {
-    width: 100%;
-    max-width: 500px;
-    height: 300px;
-    object-fit: cover;
-    border-radius: 12px;
-}
-
-.delivery-card h3 {
-    margin-top: 25px;
-}
-
-.status {
-    display: inline-block;
-    padding: 10px 18px;
-    background: #eee;
-    border-radius: 8px;
-}
-
-.actions {
-    margin-top: 25px;
-}
-
-.btn {
-    display: inline-block;
-    padding: 11px 20px;
-    margin-right: 10px;
-    color: white;
-    background: #333;
-    text-decoration: none;
-    border-radius: 8px;
-}
-
-.success {
-    background: #2e7d32;
-}
-
+.details-grid { display:grid; grid-template-columns: 260px 1fr; gap:20px; }
+.details-grid img { width:100%; border-radius:12px; }
+@media (max-width: 700px) { .details-grid { grid-template-columns: 1fr; } }
 </style>
 
-<?php require_once "../includes/footer.php"; ?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
