@@ -1,203 +1,123 @@
 <?php
-session_start();
+// ngo/edit-profile.php
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
 
-require_once "../config/database.php";
-require_once "../includes/ngo-layout.php";
+require_login();
+$uid = current_user_id();
 
-if (!isset($_SESSION['user_id'])) {
-    header("Location: ../login.php");
-    exit;
-}
-
-$ngo_id = (int)$_SESSION['user_id'];
-
-$stmt = $conn->prepare("
-    SELECT *
-    FROM users
-    WHERE user_id = ?
-    LIMIT 1
-");
-
-$stmt->bind_param("i", $ngo_id);
-$stmt->execute();
-
-$user = $stmt->get_result()->fetch_assoc();
-$stmt->close();
-
-if (!$user) {
-    header("Location: ../logout.php");
-    exit;
-}
-
-$error = "";
-$success = "";
+$stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = :u");
+$stmt->execute([':u' => $uid]);
+$u = $stmt->fetch();
+$errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $name    = post('name');
+    $phone   = post('phone');
+    $address = post('address');
+    $city    = post('city');
+    $area    = post('area');
+    $pincode = post('pincode');
+    $lat     = post('latitude');
+    $lng     = post('longitude');
 
-    $name = trim($_POST['name'] ?? '');
-    $phone = trim($_POST['phone'] ?? '');
-    $address = trim($_POST['address'] ?? '');
-    $city = trim($_POST['city'] ?? '');
-    $area = trim($_POST['area'] ?? '');
-    $pincode = trim($_POST['pincode'] ?? '');
+    if ($name === '') $errors[] = 'Name is required.';
+    if ($city === '') $errors[] = 'City is required.';
 
-    if ($name === '') {
+    $photoName = $u['profile_photo'];
+    if (!empty($_FILES['profile_photo']['name'])) {
+        $newPhoto = upload_image($_FILES['profile_photo'], PROFILE_UPLOAD, PROFILE_UPLOAD_URL);
+        if ($newPhoto) $photoName = $newPhoto;
+    }
 
-        $error = "Name is required.";
-
-    } else {
-
-        $stmt = $conn->prepare("
-            UPDATE users
-            SET
-                name = ?,
-                phone = ?,
-                address = ?,
-                city = ?,
-                area = ?,
-                pincode = ?
-            WHERE user_id = ?
-        ");
-
-        $stmt->bind_param(
-            "ssssssi",
-            $name,
-            $phone,
-            $address,
-            $city,
-            $area,
-            $pincode,
-            $ngo_id
-        );
-
-        if ($stmt->execute()) {
-            $success = "Profile updated successfully.";
-
-            $user['name'] = $name;
-            $user['phone'] = $phone;
-            $user['address'] = $address;
-            $user['city'] = $city;
-            $user['area'] = $area;
-            $user['pincode'] = $pincode;
-        } else {
-            $error = "Unable to update profile.";
-        }
-
-        $stmt->close();
+    if (!$errors) {
+        $pdo->prepare("UPDATE users SET name=:n, phone=:p, address=:a, city=:c, area=:ar,
+                        pincode=:pin, latitude=:lat, longitude=:lng, profile_photo=:ph WHERE user_id=:u")
+            ->execute([
+                ':n' => $name, ':p' => $phone, ':a' => $address,
+                ':c' => $city, ':ar' => $area, ':pin' => $pincode,
+                ':lat' => $lat !== '' ? (float)$lat : null,
+                ':lng' => $lng !== '' ? (float)$lng : null,
+                ':ph' => $photoName, ':u' => $uid,
+            ]);
+        $_SESSION['name'] = $name;
+        set_flash('success', 'Profile updated.');
+        redirect(BASE_URL . 'ngo/profile.php');
     }
 }
 
-ngo_header("Edit Profile");
+$pageTitle = 'Edit Profile';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 ?>
 
-<div class="ngo-content">
+<?php if ($errors): ?>
+    <div class="toast toast-error"><?php foreach ($errors as $e): ?><?= sanitize($e) ?><br><?php endforeach; ?></div>
+<?php endif; ?>
 
-    <div class="ngo-page-header">
-
-        <div>
-            <h1>Edit Profile</h1>
-            <p>Update your NGO account details.</p>
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:720px">
+    <?= csrf_field() ?>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">Organisation Name *</label>
+            <input type="text" name="name" class="form-control" required value="<?= sanitize($u['name']) ?>">
         </div>
-
-        <a
-            href="profile.php"
-            class="ngo-btn ngo-btn-outline">
-            ← Back
-        </a>
-
+        <div class="form-group">
+            <label class="form-label">Phone</label>
+            <input type="text" name="phone" class="form-control" value="<?= sanitize($u['phone']) ?>">
+        </div>
     </div>
 
-    <section class="ngo-section">
+    <div class="form-group">
+        <label class="form-label">Address</label>
+        <textarea name="address" class="form-control" rows="2"><?= sanitize($u['address']) ?></textarea>
+    </div>
 
-        <?php if ($error): ?>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">City *</label>
+            <input type="text" name="city" class="form-control" required value="<?= sanitize($u['city']) ?>">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Area</label>
+            <input type="text" name="area" class="form-control" value="<?= sanitize($u['area']) ?>">
+        </div>
+    </div>
 
-            <div class="ngo-alert ngo-alert-danger">
-                <?= htmlspecialchars($error) ?>
-            </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">Pincode</label>
+            <input type="text" name="pincode" class="form-control" value="<?= sanitize($u['pincode']) ?>">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Logo / Photo</label>
+            <input type="file" name="profile_photo" class="form-control" accept="image/jpeg,image/png,image/webp">
+        </div>
+    </div>
 
-        <?php endif; ?>
+    <input type="hidden" name="latitude"  value="<?= sanitize($u['latitude']) ?>">
+    <input type="hidden" name="longitude" value="<?= sanitize($u['longitude']) ?>">
 
-        <?php if ($success): ?>
+    <div class="form-group">
+        <button type="button" class="btn btn-outline btn-sm" onclick="detectLocation()">📍 Update GPS location</button>
+        <span id="geo-status" class="text-muted"></span>
+    </div>
 
-            <div class="ngo-alert ngo-alert-success">
-                <?= htmlspecialchars($success) ?>
-            </div>
+    <button class="btn btn-primary">Save Changes</button>
+    <a href="<?= BASE_URL ?>ngo/profile.php" class="btn btn-outline">Cancel</a>
+</form>
 
-        <?php endif; ?>
+<script>
+function detectLocation() {
+    if (!navigator.geolocation) return;
+    const s = document.getElementById('geo-status');
+    s.textContent = 'Detecting…';
+    navigator.geolocation.getCurrentPosition(p => {
+        document.querySelector('input[name="latitude"]').value  = p.coords.latitude.toFixed(6);
+        document.querySelector('input[name="longitude"]').value = p.coords.longitude.toFixed(6);
+        s.textContent = '✅ Updated';
+    }, e => s.textContent = '⚠️ ' + e.message);
+}
+</script>
 
-        <form method="POST" class="ngo-form">
-
-            <div class="ngo-form-grid">
-
-                <div>
-                    <label>Name</label>
-                    <input
-                        type="text"
-                        name="name"
-                        value="<?= htmlspecialchars($user['name'] ?? '') ?>"
-                        required>
-                </div>
-
-                <div>
-                    <label>Email</label>
-                    <input
-                        type="email"
-                        value="<?= htmlspecialchars($user['email'] ?? '') ?>"
-                        disabled>
-                </div>
-
-                <div>
-                    <label>Phone</label>
-                    <input
-                        type="text"
-                        name="phone"
-                        value="<?= htmlspecialchars($user['phone'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label>City</label>
-                    <input
-                        type="text"
-                        name="city"
-                        value="<?= htmlspecialchars($user['city'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label>Area</label>
-                    <input
-                        type="text"
-                        name="area"
-                        value="<?= htmlspecialchars($user['area'] ?? '') ?>">
-                </div>
-
-                <div>
-                    <label>Pincode</label>
-                    <input
-                        type="text"
-                        name="pincode"
-                        value="<?= htmlspecialchars($user['pincode'] ?? '') ?>">
-                </div>
-
-                <div class="ngo-form-full">
-                    <label>Address</label>
-
-                    <textarea
-                        name="address"
-                        rows="4"><?= htmlspecialchars($user['address'] ?? '') ?></textarea>
-                </div>
-
-            </div>
-
-            <button
-                type="submit"
-                class="ngo-btn ngo-btn-primary">
-                Save Changes
-            </button>
-
-        </form>
-
-    </section>
-
-</div>
-
-<?php ngo_footer(); ?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
