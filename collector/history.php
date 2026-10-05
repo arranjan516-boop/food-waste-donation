@@ -1,127 +1,40 @@
 <?php
+// collector/history.php
+$pageTitle = 'History';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
-
-require_role("collector");
-
-$collector_id = $_SESSION["user_id"];
-
-$page_title = "Delivery History";
-
-$sql = "
-    SELECT
-        d.delivery_id,
-        d.status,
-        d.created_at,
-        d.delivered_at,
-
-        fd.food_name,
-        fd.quantity,
-        fd.unit
-
-    FROM deliveries d
-
-    INNER JOIN food_donations fd
-        ON d.donation_id = fd.donation_id
-
-    WHERE d.collector_id = ?
-
-    ORDER BY d.created_at DESC
-";
-
-$stmt = $conn->prepare($sql);
-
-if (!$stmt) {
-    die("Database error: " . $conn->error);
-}
-
-$stmt->bind_param("i", $collector_id);
-
-$stmt->execute();
-
-$result = $stmt->get_result();
-
-require_once "../includes/header.php";
+$uid = current_user_id();
+$stmt = $pdo->prepare("
+    SELECT ct.*, d.food_name, u.name AS donor_name,
+           r.name AS recipient_name
+    FROM collector_tasks ct
+    JOIN food_donations d ON d.donation_id = ct.donation_id
+    JOIN users u ON u.user_id = d.donor_id
+    LEFT JOIN food_requests fr ON fr.request_id = ct.request_id
+    LEFT JOIN users r ON r.user_id = fr.recipient_id
+    WHERE ct.collector_id = :u
+    ORDER BY ct.assigned_at DESC
+");
+$stmt->execute([':u' => $uid]);
+$rows = $stmt->fetchAll();
 ?>
 
-<div class="container">
-
-    <h1>Delivery History</h1>
-
-    <?php if ($result->num_rows === 0): ?>
-
-        <div class="alert">
-            No delivery history found.
-        </div>
-
-    <?php else: ?>
-
-        <?php while ($row = $result->fetch_assoc()): ?>
-
-            <div class="history-card">
-
-                <h2>
-                    <?= htmlspecialchars($row["food_name"]) ?>
-                </h2>
-
-                <p>
-                    Quantity:
-                    <?= htmlspecialchars($row["quantity"]) ?>
-                    <?= htmlspecialchars($row["unit"]) ?>
-                </p>
-
-                <p>
-                    Status:
-                    <strong>
-                        <?= htmlspecialchars($row["status"]) ?>
-                    </strong>
-                </p>
-
-                <p>
-                    Created:
-                    <?= htmlspecialchars($row["created_at"]) ?>
-                </p>
-
-                <?php if (!empty($row["delivered_at"])): ?>
-
-                    <p>
-                        Delivered:
-                        <?= htmlspecialchars($row["delivered_at"]) ?>
-                    </p>
-
-                <?php endif; ?>
-
-            </div>
-
-        <?php endwhile; ?>
-
-    <?php endif; ?>
-
+<div class="table-card">
+    <div class="table-card-header"><h3>Full History (<?= count($rows) ?>)</h3></div>
+    <table class="table">
+        <thead><tr><th>Food</th><th>Donor</th><th>Recipient</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>
+        <?php foreach ($rows as $t): ?>
+            <tr>
+                <td><?= sanitize($t['food_name']) ?></td>
+                <td><?= sanitize($t['donor_name']) ?></td>
+                <td><?= sanitize($t['recipient_name'] ?: '—') ?></td>
+                <td><?= status_badge($t['status']) ?></td>
+                <td><?= date('d M Y', strtotime($t['assigned_at'])) ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
 </div>
 
-
-<style>
-
-.container {
-    max-width: 900px;
-    margin: 30px auto;
-    padding: 20px;
-}
-
-.history-card {
-    background: white;
-    padding: 20px;
-    margin-bottom: 15px;
-    border-radius: 12px;
-    box-shadow: 0 3px 10px rgba(0,0,0,.08);
-}
-
-</style>
-
-<?php
-$stmt->close();
-require_once "../includes/footer.php";
-?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
