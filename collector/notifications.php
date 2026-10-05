@@ -1,103 +1,64 @@
 <?php
+// collector/notifications.php
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/notification-functions.php';
+require_login();
+$uid = current_user_id();
 
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
-require_once "../includes/notification-functions.php";
-
-require_role("collector");
-
-$user_id = $_SESSION["user_id"];
-
-$page_title = "Notifications";
-
-$sql = "
-    SELECT *
-    FROM notifications
-    WHERE user_id = ?
-    ORDER BY created_at DESC
-";
-
-$stmt = $conn->prepare($sql);
-
-if (!$stmt) {
-    die("Database error: " . $conn->error);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $action = post('action');
+    if ($action === 'read') {
+        mark_notification_read($pdo, int_post('id'), $uid);
+        set_flash('success', 'Marked as read.');
+        redirect(BASE_URL . 'collector/notifications.php');
+    }
+    if ($action === 'read_all') {
+        mark_all_notifications_read($pdo, $uid);
+        set_flash('success', 'All marked as read.');
+        redirect(BASE_URL . 'collector/notifications.php');
+    }
 }
 
-$stmt->bind_param("i", $user_id);
-
-$stmt->execute();
-
-$result = $stmt->get_result();
-
-require_once "../includes/header.php";
+$pageTitle = 'Notifications';
+require_once __DIR__ . '/../includes/dashboard-header.php';
+$notifs = get_notifications($pdo, $uid, 100);
 ?>
 
-<div class="container">
-
-    <h1>Notifications</h1>
-
-    <?php if ($result->num_rows === 0): ?>
-
-        <div class="alert">
-            No notifications available.
-        </div>
-
-    <?php else: ?>
-
-        <?php while ($notification = $result->fetch_assoc()): ?>
-
-            <div class="notification">
-
-                <h3>
-                    <?= htmlspecialchars($notification["title"]) ?>
-                </h3>
-
-                <p>
-                    <?= htmlspecialchars($notification["message"]) ?>
-                </p>
-
-                <small>
-                    <?= htmlspecialchars($notification["created_at"]) ?>
-                </small>
-
-            </div>
-
-        <?php endwhile; ?>
-
-    <?php endif; ?>
-
+<div class="flex-between mb-2">
+    <h3>Notifications (<?= count($notifs) ?>)</h3>
+    <form method="post">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="read_all">
+        <button class="btn btn-outline btn-sm">Mark all as read</button>
+    </form>
 </div>
 
+<div class="table-card">
+    <?php if (!$notifs): ?>
+        <div style="padding:40px;text-align:center"><p class="text-muted">No notifications yet.</p></div>
+    <?php else: ?>
+        <?php foreach ($notifs as $n): ?>
+            <div style="padding:14px 20px;border-bottom:1px solid var(--gray-100);<?= !$n['is_read']?'background:#FFFDF5;':'' ?>">
+                <div class="flex-between">
+                    <div>
+                        <strong><?= sanitize($n['title']) ?></strong>
+                        <p style="margin:4px 0;color:var(--gray-700)"><?= sanitize($n['message']) ?></p>
+                        <small class="text-muted"><?= time_ago($n['created_at']) ?></small>
+                    </div>
+                    <?php if (!$n['is_read']): ?>
+                        <form method="post">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="read">
+                            <input type="hidden" name="id" value="<?= (int)$n['notification_id'] ?>">
+                            <button class="btn btn-outline btn-sm">Mark read</button>
+                        </form>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+</div>
 
-<style>
-
-.container {
-    max-width: 900px;
-    margin: 30px auto;
-    padding: 20px;
-}
-
-.notification {
-    padding: 20px;
-    margin-bottom: 15px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 3px 10px rgba(0,0,0,.08);
-}
-
-.notification h3 {
-    margin-bottom: 8px;
-}
-
-.notification small {
-    color: #777;
-}
-
-</style>
-
-<?php
-$stmt->close();
-require_once "../includes/footer.php";
-?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
