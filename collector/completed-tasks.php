@@ -1,133 +1,44 @@
-
 <?php
+// collector/completed-tasks.php
+$pageTitle = 'Completed Tasks';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
-
-require_role("collector");
-
-$collector_id = $_SESSION["user_id"];
-
-$page_title = "Completed Tasks";
-
-$sql = "
-    SELECT
-        d.delivery_id,
-        d.status,
-        d.delivered_at,
-
-        fd.food_name,
-        fd.food_category,
-        fd.quantity,
-        fd.unit,
-        fd.city,
-        fd.area
-
-    FROM deliveries d
-
-    INNER JOIN food_donations fd
-        ON d.donation_id = fd.donation_id
-
-    WHERE
-        d.collector_id = ?
-        AND d.status = 'delivered'
-
-    ORDER BY d.delivered_at DESC
-";
-
-$stmt = $conn->prepare($sql);
-
-if (!$stmt) {
-    die("Database error: " . $conn->error);
-}
-
-$stmt->bind_param("i", $collector_id);
-
-$stmt->execute();
-
-$result = $stmt->get_result();
-
-require_once "../includes/header.php";
+$uid = current_user_id();
+$stmt = $pdo->prepare("
+    SELECT ct.*, d.food_name, d.food_photo, u.name AS donor_name
+    FROM collector_tasks ct
+    JOIN food_donations d ON d.donation_id = ct.donation_id
+    JOIN users u ON u.user_id = d.donor_id
+    WHERE ct.collector_id = :u
+      AND ct.status IN ('delivered','completed')
+    ORDER BY ct.delivery_time DESC
+");
+$stmt->execute([':u' => $uid]);
+$rows = $stmt->fetchAll();
 ?>
 
-<div class="container">
-
-    <h1>Completed Tasks</h1>
-
-    <?php if ($result->num_rows === 0): ?>
-
-        <div class="alert">
-            You have not completed any delivery yet.
-        </div>
-
+<div class="table-card">
+    <div class="table-card-header"><h3>Completed Tasks (<?= count($rows) ?>)</h3></div>
+    <?php if (!$rows): ?>
+        <div style="padding:40px;text-align:center"><p class="text-muted">No completed tasks yet.</p></div>
     <?php else: ?>
-
-        <div class="task-list">
-
-            <?php while ($task = $result->fetch_assoc()): ?>
-
-                <div class="task">
-
-                    <h2>
-                        <?= htmlspecialchars($task["food_name"]) ?>
-                    </h2>
-
-                    <p>
-                        <strong>Category:</strong>
-                        <?= htmlspecialchars($task["food_category"]) ?>
-                    </p>
-
-                    <p>
-                        <strong>Quantity:</strong>
-                        <?= htmlspecialchars($task["quantity"]) ?>
-                        <?= htmlspecialchars($task["unit"]) ?>
-                    </p>
-
-                    <p>
-                        <strong>Location:</strong>
-                        <?= htmlspecialchars($task["area"]) ?>,
-                        <?= htmlspecialchars($task["city"]) ?>
-                    </p>
-
-                    <p>
-                        <strong>Delivered:</strong>
-                        <?= htmlspecialchars($task["delivered_at"]) ?>
-                    </p>
-
-                    <strong>✅ Delivered</strong>
-
-                </div>
-
-            <?php endwhile; ?>
-
-        </div>
-
+        <table class="table">
+            <thead><tr><th>Food</th><th>Donor</th><th>Status</th><th>Delivered</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($rows as $t): ?>
+                <tr>
+                    <td><?= sanitize($t['food_name']) ?></td>
+                    <td><?= sanitize($t['donor_name']) ?></td>
+                    <td><?= status_badge($t['status']) ?></td>
+                    <td><?= $t['delivery_time'] ? date('d M Y, h:i A', strtotime($t['delivery_time'])) : '—' ?></td>
+                    <td>
+                        <a href="<?= BASE_URL ?>collector/active-delivery.php?id=<?= (int)$t['task_id'] ?>" class="btn btn-outline btn-sm">View</a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
     <?php endif; ?>
-
 </div>
 
-
-<style>
-
-.container {
-    max-width: 1000px;
-    margin: 30px auto;
-    padding: 20px;
-}
-
-.task {
-    padding: 20px;
-    margin-bottom: 15px;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 3px 10px rgba(0,0,0,.08);
-}
-
-</style>
-
-<?php
-$stmt->close();
-require_once "../includes/footer.php";
-?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
