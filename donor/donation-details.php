@@ -41,8 +41,8 @@ $proof = $pf->fetch();
         <img src="<?= food_photo_url($d['food_photo']) ?>" alt="" style="width:100%;border-radius:12px">
 
         <div>
-            <p><strong>Category:</strong> <?= sanitize($d['food_category']) ?></p>
-            <p><strong>Type:</strong> <?= sanitize($d['food_type']) ?></p>
+            <p><strong>Category:</strong> <?= sanitize($d['food_category'] ?: '—') ?></p>
+            <p><strong>Type:</strong> <?= sanitize($d['food_type'] ?: '—') ?></p>
             <p><strong>Quantity:</strong> <?= (float)$d['quantity'] ?> <?= sanitize($d['unit']) ?></p>
             <p><strong>People served:</strong> <?= (int)$d['people_served'] ?></p>
             <p><strong>Best before:</strong> <?= $d['best_before'] ? date('d M Y, h:i A', strtotime($d['best_before'])) : '—' ?></p>
