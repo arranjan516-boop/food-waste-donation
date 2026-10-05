@@ -45,7 +45,7 @@ $proof = $pf->fetch();
             <p><strong>Type:</strong> <?= sanitize($d['food_type']) ?></p>
             <p><strong>Quantity:</strong> <?= (float)$d['quantity'] ?> <?= sanitize($d['unit']) ?></p>
             <p><strong>People served:</strong> <?= (int)$d['people_served'] ?></p>
-            <p><strong>Best before:</strong> <?= date('d M Y, h:i A', strtotime($d['best_before'])) ?></p>
+            <p><strong>Best before:</strong> <?= $d['best_before'] ? date('d M Y, h:i A', strtotime($d['best_before'])) : '—' ?></p>
             <p><strong>Urgency:</strong> <?= ucfirst(str_replace('_',' ',$d['urgency'])) ?></p>
             <p><strong>Delivery:</strong> <?= ucwords(str_replace('_',' ',$d['delivery_preference'])) ?></p>
             <p><strong>Partial requests:</strong> <?= $d['allow_partial_request'] ? 'Allowed' : 'Not allowed' ?></p>
