@@ -1,166 +1,46 @@
 <?php
+// collector/profile.php
+$pageTitle = 'Profile';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
-
-require_role("collector");
-
-$user_id = $_SESSION["user_id"];
-
-$sql = "
-    SELECT
-        user_id,
-        name,
-        email,
-        phone,
-        role,
-        address,
-        city,
-        area,
-        pincode,
-        profile_photo,
-        status,
-        created_at
-
-    FROM users
-
-    WHERE user_id = ?
-
-    LIMIT 1
-";
-
-$stmt = $conn->prepare($sql);
-
-if (!$stmt) {
-    die("Database error: " . $conn->error);
-}
-
-$stmt->bind_param("i", $user_id);
-
-$stmt->execute();
-
-$result = $stmt->get_result();
-
-if ($result->num_rows === 0) {
-    $stmt->close();
-    die("Profile not found.");
-}
-
-$user = $result->fetch_assoc();
-
-$stmt->close();
-
-$page_title = "My Profile";
-
-require_once "../includes/header.php";
+$uid = current_user_id();
+$stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = :u");
+$stmt->execute([':u' => $uid]);
+$u = $stmt->fetch();
 ?>
 
-<div class="container">
-
-    <h1>My Profile</h1>
-
-    <div class="profile-card">
-
-        <?php if (!empty($user["profile_photo"])): ?>
-
-            <img
-                src="../uploads/profiles/<?= htmlspecialchars($user["profile_photo"]) ?>"
-                class="profile-image"
-                alt="Profile"
-            >
-
-        <?php endif; ?>
-
-
-        <h2>
-            <?= htmlspecialchars($user["name"]) ?>
-        </h2>
-
-
-        <p>
-            <strong>Email:</strong>
-            <?= htmlspecialchars($user["email"]) ?>
-        </p>
-
-        <p>
-            <strong>Phone:</strong>
-            <?= htmlspecialchars($user["phone"]) ?>
-        </p>
-
-        <p>
-            <strong>Role:</strong>
-            <?= htmlspecialchars($user["role"]) ?>
-        </p>
-
-        <p>
-            <strong>Address:</strong>
-            <?= htmlspecialchars($user["address"]) ?>
-        </p>
-
-        <p>
-            <strong>City:</strong>
-            <?= htmlspecialchars($user["city"]) ?>
-        </p>
-
-        <p>
-            <strong>Area:</strong>
-            <?= htmlspecialchars($user["area"]) ?>
-        </p>
-
-        <p>
-            <strong>Pincode:</strong>
-            <?= htmlspecialchars($user["pincode"]) ?>
-        </p>
-
-        <p>
-            <strong>Status:</strong>
-            <?= htmlspecialchars($user["status"]) ?>
-        </p>
-
-
-        <a href="edit-profile.php" class="btn">
-            Edit Profile
-        </a>
-
+<div class="card" style="max-width:720px">
+    <div class="flex gap-2 mb-3" style="align-items:center">
+        <div class="avatar-lg">
+            <?php if ($u['profile_photo']): ?>
+                <img src="<?= PROFILE_UPLOAD_URL . rawurlencode($u['profile_photo']) ?>" alt="">
+            <?php else: ?>
+                <?= strtoupper(substr($u['name'], 0, 1)) ?>
+            <?php endif; ?>
+        </div>
+        <div>
+            <h2><?= sanitize($u['name']) ?></h2>
+            <p class="text-muted"><?= sanitize(ucfirst($u['role'])) ?> · <?= sanitize($u['email']) ?></p>
+        </div>
     </div>
 
+    <p><strong>Phone:</strong> <?= sanitize($u['phone'] ?: '—') ?></p>
+    <p><strong>City / Area:</strong> <?= sanitize($u['city']) ?> · <?= sanitize($u['area']) ?></p>
+    <p><strong>Pincode:</strong> <?= sanitize($u['pincode']) ?></p>
+    <p><strong>Location:</strong>
+        <?= $u['latitude'] && $u['longitude']
+            ? sanitize($u['latitude'] . ', ' . $u['longitude'])
+            : '<span class="text-muted">Not set (needed for 15 KM matching)</span>' ?>
+    </p>
+    <p><strong>Joined:</strong> <?= date('d M Y', strtotime($u['created_at'])) ?></p>
+
+    <a href="<?= BASE_URL ?>collector/edit-profile.php" class="btn btn-primary mt-2">Edit Profile</a>
 </div>
 
-
 <style>
-
-.container {
-    max-width: 800px;
-    margin: 30px auto;
-    padding: 20px;
-}
-
-.profile-card {
-    background: white;
-    padding: 30px;
-    border-radius: 15px;
-    box-shadow: 0 3px 12px rgba(0,0,0,.08);
-}
-
-.profile-image {
-    width: 120px;
-    height: 120px;
-    object-fit: cover;
-    border-radius: 50%;
-}
-
-.btn {
-    display: inline-block;
-    margin-top: 15px;
-    padding: 11px 20px;
-    background: #333;
-    color: white;
-    text-decoration: none;
-    border-radius: 8px;
-}
-
+.avatar-lg { width:72px;height:72px;border-radius:50%;background:var(--green);color:#fff;
+             display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;overflow:hidden;}
+.avatar-lg img { width:100%;height:100%;object-fit:cover; }
 </style>
 
-<?php require_once "../includes/footer.php"; ?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
