@@ -1,13 +1,18 @@
 <?php
 // donor/donate-food.php
-$pageTitle = 'Donate Food';
-require_once __DIR__ . '/../includes/dashboard-header.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/location-functions.php';
 require_once __DIR__ . '/../includes/notification-functions.php';
 
+require_login();
+if (current_role() !== 'donor' && current_role() !== 'admin') {
+    set_flash('error', 'Access denied.');
+    redirect(BASE_URL . 'index.php');
+}
+
 $uid = current_user_id();
 
-// Pre-fill location from donor's user record
 $userRow = $pdo->prepare("SELECT * FROM users WHERE user_id = :u");
 $userRow->execute([':u' => $uid]);
 $user = $userRow->fetch();
@@ -41,7 +46,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $old['pref_ngo']       = isset($_POST['pref_ngo'])       ? 1 : 0;
     $old['allow_partial_request'] = isset($_POST['allow_partial_request']) ? 1 : 0;
 
-    // Validation
     if ($old['food_name'] === '')  $errors[] = 'Food name is required.';
     if ($old['quantity'] === '' || (float)$old['quantity'] <= 0) $errors[] = 'Valid quantity is required.';
     if ($old['people_served'] === '' || (int)$old['people_served'] <= 0) $errors[] = 'Number of people served is required.';
@@ -52,7 +56,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Select at least one delivery option (self / collector / NGO).';
     }
 
-    // Image upload (required per spec — but allow placeholder for demo, still recommended)
     $photoName = null;
     if (!empty($_FILES['food_photo']['name'])) {
         $photoName = upload_image($_FILES['food_photo'], FOOD_UPLOAD, FOOD_UPLOAD_URL);
@@ -61,13 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = 'Food photo is required.';
     }
 
-    // Build delivery_preference enum value from checkboxes
     $pref = 'any';
     if ($old['pref_collector'] && !$old['pref_self'] && !$old['pref_ngo']) $pref = 'collector';
     elseif ($old['pref_self'] && !$old['pref_collector'] && !$old['pref_ngo']) $pref = 'self_delivery';
     elseif ($old['pref_ngo'] && !$old['pref_self'] && !$old['pref_collector']) $pref = 'ngo';
-    elseif ($old['pref_self'] && $old['pref_collector'] && !$old['pref_ngo']) $pref = 'self_delivery'; // fallback — 'any' covers combos
-    // For 2+ options, use 'any'
     if (($old['pref_self'] + $old['pref_collector'] + $old['pref_ngo']) > 1) $pref = 'any';
 
     if (!$errors) {
@@ -108,46 +108,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $donationId = (int)$pdo->lastInsertId();
 
-        // Log history
         $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by)
                        VALUES (:d, NULL, 'available', :u)")
             ->execute([':d' => $donationId, ':u' => $uid]);
 
-        // ---- Notifications to nearby users ----
         if ($old['latitude'] !== '' && $old['longitude'] !== '') {
             $lat = (float)$old['latitude'];
             $lng = (float)$old['longitude'];
 
-            // Recipients (only if collector/self/any delivery — i.e. they can request)
-            notify_nearby_role(
-                $pdo, 'recipient', $lat, $lng,
+            notify_nearby_role($pdo, 'recipient', $lat, $lng,
                 '🍱 New Food Donation',
                 $old['people_served'] . ' meals available: ' . $old['food_name'],
-                'new_donation', $donationId
-            );
+                'new_donation', $donationId);
 
-            // Collectors (only if collector option is enabled)
             if ($old['pref_collector'] || $pref === 'any') {
-                notify_nearby_role(
-                    $pdo, 'collector', $lat, $lng,
+                notify_nearby_role($pdo, 'collector', $lat, $lng,
                     '🚴 New Pickup Available',
                     'A donor near you needs food collection: ' . $old['food_name'],
-                    'new_pickup', $donationId
-                );
+                    'new_pickup', $donationId);
             }
 
-            // NGOs (only if NGO option is enabled)
             if ($old['pref_ngo'] || $pref === 'any') {
-                notify_nearby_role(
-                    $pdo, 'ngo', $lat, $lng,
+                notify_nearby_role($pdo, 'ngo', $lat, $lng,
                     '🏢 New Donation Available',
                     'New donation in your area: ' . $old['food_name'],
-                    'new_donation', $donationId
-                );
+                    'new_donation', $donationId);
             }
         }
 
-        // Notify admins
         notify_admins($pdo, '📦 New Donation Posted',
             current_user()['name'] . ' posted "' . $old['food_name'] . '".',
             'new_donation', $donationId);
@@ -156,6 +144,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(BASE_URL . 'donor/my-donations.php');
     }
 }
+
+// ---- NOW safe to output HTML ----
+$pageTitle = 'Donate Food';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 ?>
 
 <?php if ($errors): ?>
@@ -312,7 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <label style="margin-top:14px;display:block">
         <input type="checkbox" name="allow_partial_request" <?= $old['allow_partial_request']?'checked':'' ?>>
-        Allow partial quantity requests (multiple recipients can request part of this donation)
+        Allow partial quantity requests
     </label>
 
     <div class="mt-3">
