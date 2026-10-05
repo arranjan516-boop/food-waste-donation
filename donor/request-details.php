@@ -1,675 +1,164 @@
 <?php
-
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
-require_once "../includes/notification-functions.php";
-
-require_role("donor");
-
-
-/*
-|--------------------------------------------------------------------------
-| Get Request ID
-|--------------------------------------------------------------------------
-*/
-
-$request_id = (int)($_GET["id"] ?? 0);
-
-
-if ($request_id <= 0) {
-
-    header("Location: food-requests.php");
-    exit;
-
-}
-
-
-$donor_id = $_SESSION["user_id"];
-
-$error = "";
-$message = "";
-
-
-/*
-|--------------------------------------------------------------------------
-| Get Request Details
-|--------------------------------------------------------------------------
-*/
-
-$sql = "
-    SELECT
-        r.request_id,
-        r.donation_id,
-        r.recipient_id,
-        r.quantity,
-        r.message,
-        r.status,
-        r.requested_at,
-
-        d.food_name,
-        d.food_category,
-        d.description,
-        d.quantity AS available_quantity,
-        d.unit,
-        d.food_photo,
-        d.delivery_preference,
-        d.city AS donor_city,
-        d.area AS donor_area,
-
-        u.name AS recipient_name,
-        u.phone AS recipient_phone,
-        u.email AS recipient_email,
-        u.city AS recipient_city,
-        u.area AS recipient_area
-
-    FROM food_requests r
-
-    INNER JOIN food_donations d
-        ON r.donation_id = d.donation_id
-
-    INNER JOIN users u
-        ON r.recipient_id = u.user_id
-
-    WHERE r.request_id = ?
-    AND d.donor_id = ?
-
-    LIMIT 1
-";
-
-
-$stmt = $conn->prepare($sql);
-
-
-if (!$stmt) {
-
-    die("Database error: " . $conn->error);
-
-}
-
-
-$stmt->bind_param(
-    "ii",
-    $request_id,
-    $donor_id
-);
-
-
-$stmt->execute();
-
-
-$result = $stmt->get_result();
-
-
-$request = $result->fetch_assoc();
-
-
-if (!$request) {
-
-    die("Food request not found.");
-
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| Accept / Reject Request
-|--------------------------------------------------------------------------
-*/
-
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-
-    $action = $_POST["action"] ?? "";
-
-
-    /*
-    |--------------------------------------------------------------------------
-    | ACCEPT REQUEST
-    |--------------------------------------------------------------------------
-    */
-
-    if ($action === "accept") {
-
-        if ($request["status"] !== "pending") {
-
-            $error =
-                "This request has already been processed.";
-
-        } else {
-
-            /*
-             * Accept this request
-             */
-
-            $update = $conn->prepare(
-                "UPDATE food_requests
-                 SET status = 'accepted'
-                 WHERE request_id = ?
-                 AND status = 'pending'"
-            );
-
-
-            $update->bind_param(
-                "i",
-                $request_id
-            );
-
-
-            if ($update->execute()) {
-
-                /*
-                 * Notify recipient
-                 */
-
-                create_notification(
-
-                    $conn,
-
-                    $request["recipient_id"],
-
-                    "Food Request Accepted",
-
-                    "Your request for " .
-                    $request["food_name"] .
-                    " has been accepted by the donor.",
-
-                    "food_request",
-
-                    $request_id
-
-                );
-
-
-                /*
-                 * Go to delivery options
-                 */
-
-                header(
-                    "Location: delivery-options.php?id=" .
-                    $request_id
-                );
-
-                exit;
-
-            } else {
-
-                $error =
-                    "Unable to accept the request.";
-
-            }
-
-        }
-
+// donor/request-details.php
+$pageTitle = 'Request Details';
+require_once __DIR__ . '/../includes/dashboard-header.php';
+require_once __DIR__ . '/../includes/notification-functions.php';
+
+$uid = current_user_id();
+$rid = int_get('id');
+
+$stmt = $pdo->prepare("
+    SELECT fr.*, d.donor_id, d.food_name, d.food_photo, d.unit, d.delivery_preference, d.status AS donation_status,
+           u.name AS recipient_name, u.phone AS recipient_phone, u.email AS recipient_email, u.address AS recipient_address
+    FROM food_requests fr
+    JOIN food_donations d ON d.donation_id = fr.donation_id
+    JOIN users u ON u.user_id = fr.recipient_id
+    WHERE fr.request_id = :rid AND d.donor_id = :u
+");
+$stmt->execute([':rid' => $rid, ':u' => $uid]);
+$r = $stmt->fetch();
+
+if (!$r) { set_flash('error', 'Request not found.'); redirect(BASE_URL . 'donor/food-requests.php'); }
+
+// ---- Handle actions ----
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $action = post('action');
+
+    if ($action === 'accept' && $r['status'] === 'pending') {
+        $pdo->prepare("UPDATE food_requests SET status='accepted', accepted_at=NOW() WHERE request_id=:r")
+            ->execute([':r' => $rid]);
+        $pdo->prepare("UPDATE food_donations SET status='accepted' WHERE donation_id=:d")
+            ->execute([':d' => $r['donation_id']]);
+
+        // history
+        $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by) VALUES (:d,'requested','accepted',:u)")
+            ->execute([':d' => $r['donation_id'], ':u' => $uid]);
+
+        notify($pdo, $r['recipient_id'], '✅ Request Accepted',
+               'Your request for "' . $r['food_name'] . '" has been accepted.', 'request_accepted', $r['donation_id']);
+        notify_admins($pdo, '✅ Donation Accepted', 'Donor accepted request #' . $rid, 'donation', $r['donation_id']);
+
+        set_flash('success', 'Request accepted.');
+        redirect(BASE_URL . 'donor/request-details.php?id=' . $rid);
     }
 
+    if ($action === 'reject' && $r['status'] === 'pending') {
+        $pdo->prepare("UPDATE food_requests SET status='rejected' WHERE request_id=:r")
+            ->execute([':r' => $rid]);
 
-    /*
-    |--------------------------------------------------------------------------
-    | REJECT REQUEST
-    |--------------------------------------------------------------------------
-    */
+        notify($pdo, $r['recipient_id'], '❌ Request Declined',
+               'Your request for "' . $r['food_name'] . '" was declined.', 'request_rejected', $r['donation_id']);
 
-    elseif ($action === "reject") {
-
-        if ($request["status"] !== "pending") {
-
-            $error =
-                "This request has already been processed.";
-
-        } else {
-
-            $update = $conn->prepare(
-                "UPDATE food_requests
-                 SET status = 'rejected'
-                 WHERE request_id = ?
-                 AND status = 'pending'"
-            );
-
-
-            $update->bind_param(
-                "i",
-                $request_id
-            );
-
-
-            if ($update->execute()) {
-
-                /*
-                 * Notify recipient
-                 */
-
-                create_notification(
-
-                    $conn,
-
-                    $request["recipient_id"],
-
-                    "Food Request Rejected",
-
-                    "Your request for " .
-                    $request["food_name"] .
-                    " was not accepted by the donor.",
-
-                    "food_request",
-
-                    $request_id
-
-                );
-
-
-                /*
-                 * Refresh page
-                 */
-
-                header(
-                    "Location: request-details.php?id=" .
-                    $request_id
-                );
-
-                exit;
-
-            } else {
-
-                $error =
-                    "Unable to reject the request.";
-
-            }
-
-        }
-
+        set_flash('info', 'Request declined.');
+        redirect(BASE_URL . 'donor/request-details.php?id=' . $rid);
     }
 
+    if ($action === 'start_delivery') {
+        // Only valid if donor chose self-delivery and request is accepted
+        $pdo->prepare("UPDATE food_donations SET status='out_for_delivery' WHERE donation_id=:d")
+            ->execute([':d' => $r['donation_id']]);
+
+        notify($pdo, $r['recipient_id'], '🚚 Out for Delivery',
+               'Your donation "' . $r['food_name'] . '" is on its way.', 'delivery', $r['donation_id']);
+
+        set_flash('success', 'Marked out for delivery.');
+        redirect(BASE_URL . 'donor/request-details.php?id=' . $rid);
+    }
+
+    if ($action === 'mark_delivered') {
+        // Donor must upload delivery proof
+        $proof = upload_image($_FILES['proof_image'] ?? null, PROOF_UPLOAD, PROOF_UPLOAD_URL);
+        if (!$proof) {
+            set_flash('error', 'Please upload a delivery proof photo.');
+        } else {
+            $pdo->prepare("INSERT INTO delivery_proofs
+                (donation_id, request_id, uploaded_by, uploaded_by_role, proof_image, delivery_note)
+                VALUES (:d,:r,:u,'donor',:img,:n)")
+                ->execute([
+                    ':d' => $r['donation_id'], ':r' => $rid, ':u' => $uid,
+                    ':img' => $proof, ':n' => post('delivery_note'),
+                ]);
+
+            $pdo->prepare("UPDATE food_donations SET status='delivered' WHERE donation_id=:d")
+                ->execute([':d' => $r['donation_id']]);
+            $pdo->prepare("UPDATE food_requests SET status='completed' WHERE request_id=:r")
+                ->execute([':r' => $rid]);
+
+            notify($pdo, $r['recipient_id'], '🍱 Food Delivered',
+                   'Food has been delivered. Please confirm receipt.', 'delivered', $r['donation_id']);
+            notify_admins($pdo, '📷 Delivery Proof Uploaded',
+                   'Donor uploaded proof for donation #' . $r['donation_id'], 'proof', $r['donation_id']);
+
+            set_flash('success', 'Delivery recorded.');
+            redirect(BASE_URL . 'donor/request-details.php?id=' . $rid);
+        }
+    }
 }
-
-
-/*
-|--------------------------------------------------------------------------
-| Page
-|--------------------------------------------------------------------------
-*/
-
-$page_title = "Request Details";
-
-require_once "../includes/header.php";
-
 ?>
 
-
-<div class="container">
-
-
-    <div class="page-header">
-
-        <h1>
-            Food Request Details
-        </h1>
-
-        <a
-            href="food-requests.php"
-            class="btn"
-        >
-            ← Back to Food Requests
-        </a>
-
+<div class="card mb-3">
+    <div class="flex-between mb-2">
+        <h2><?= sanitize($r['food_name']) ?></h2>
+        <?= status_badge($r['status']) ?>
     </div>
-
-
-    <?php if ($error !== ""): ?>
-
-        <div class="alert error">
-
-            <?= e($error) ?>
-
+    <div class="details-grid">
+        <img src="<?= food_photo_url($r['food_photo']) ?>" alt="" style="width:100%;border-radius:12px">
+        <div>
+            <p><strong>Recipient:</strong> <?= sanitize($r['recipient_name']) ?></p>
+            <p><strong>Phone:</strong> <?= sanitize($r['recipient_phone'] ?: '—') ?></p>
+            <p><strong>Email:</strong> <?= sanitize($r['recipient_email']) ?></p>
+            <p><strong>Requested qty:</strong> <?= (float)$r['quantity'] ?> <?= sanitize($r['unit']) ?></p>
+            <p><strong>Message:</strong> <?= sanitize($r['message'] ?: '—') ?></p>
+            <p class="text-muted">Requested <?= time_ago($r['requested_at']) ?></p>
         </div>
-
-    <?php endif; ?>
-
-
-    <!-- Food Information -->
-
-    <div class="request-card">
-
-
-        <div class="request-image">
-
-            <?php if (!empty($request["food_photo"])): ?>
-
-                <img
-                    src="../uploads/food/<?= e($request["food_photo"]) ?>"
-                    alt="<?= e($request["food_name"]) ?>"
-                >
-
-            <?php else: ?>
-
-                <img
-                    src="../assets/images/default-food.jpg"
-                    alt="Food"
-                >
-
-            <?php endif; ?>
-
-        </div>
-
-
-        <div class="request-content">
-
-
-            <h2>
-                <?= e($request["food_name"]) ?>
-            </h2>
-
-
-            <p>
-
-                <strong>
-                    Category:
-                </strong>
-
-                <?= e(
-                    $request["food_category"]
-                ) ?>
-
-            </p>
-
-
-            <p>
-
-                <strong>
-                    Requested Quantity:
-                </strong>
-
-                <?= e(
-                    $request["quantity"]
-                ) ?>
-
-                <?= e(
-                    $request["unit"]
-                ) ?>
-
-            </p>
-
-
-            <p>
-
-                <strong>
-                    Available Quantity:
-                </strong>
-
-                <?= e(
-                    $request["available_quantity"]
-                ) ?>
-
-                <?= e(
-                    $request["unit"]
-                ) ?>
-
-            </p>
-
-
-            <?php if (!empty($request["description"])): ?>
-
-                <p>
-
-                    <strong>
-                        Description:
-                    </strong>
-
-                    <?= e(
-                        $request["description"]
-                    ) ?>
-
-                </p>
-
-            <?php endif; ?>
-
-
-            <hr>
-
-
-            <!-- Recipient Information -->
-
-            <h3>
-                Recipient Information
-            </h3>
-
-
-            <p>
-
-                <strong>
-                    Name:
-                </strong>
-
-                <?= e(
-                    $request["recipient_name"]
-                ) ?>
-
-            </p>
-
-
-            <p>
-
-                <strong>
-                    Phone:
-                </strong>
-
-                <?= e(
-                    $request["recipient_phone"]
-                ) ?>
-
-            </p>
-
-
-            <p>
-
-                <strong>
-                    Email:
-                </strong>
-
-                <?= e(
-                    $request["recipient_email"]
-                ) ?>
-
-            </p>
-
-
-            <p>
-
-                <strong>
-                    Location:
-                </strong>
-
-                <?= e(
-                    $request["recipient_area"]
-                ) ?>
-
-                <?php if (
-                    !empty($request["recipient_area"]) &&
-                    !empty($request["recipient_city"])
-                ): ?>
-
-                    ,
-
-                <?php endif; ?>
-
-                <?= e(
-                    $request["recipient_city"]
-                ) ?>
-
-            </p>
-
-
-            <?php if (!empty($request["message"])): ?>
-
-                <p>
-
-                    <strong>
-                        Recipient Message:
-                    </strong>
-
-                    <?= e(
-                        $request["message"]
-                    ) ?>
-
-                </p>
-
-            <?php endif; ?>
-
-
-            <p>
-
-                <strong>
-                    Requested On:
-                </strong>
-
-                <?= e(
-                    $request["requested_at"]
-                ) ?>
-
-            </p>
-
-
-            <p>
-
-                <strong>
-                    Status:
-                </strong>
-
-
-                <?php if ($request["status"] === "pending"): ?>
-
-                    <span class="status pending">
-                        Pending
-                    </span>
-
-
-                <?php elseif ($request["status"] === "accepted"): ?>
-
-                    <span class="status accepted">
-                        Accepted
-                    </span>
-
-
-                <?php elseif ($request["status"] === "rejected"): ?>
-
-                    <span class="status rejected">
-                        Rejected
-                    </span>
-
-
-                <?php else: ?>
-
-                    <span class="status">
-                        <?= e(
-                            ucfirst($request["status"])
-                        ) ?>
-                    </span>
-
-                <?php endif; ?>
-
-            </p>
-
-
-            <!-- Buttons -->
-
-            <?php if ($request["status"] === "pending"): ?>
-
-
-                <div class="action-buttons">
-
-
-                    <!-- Accept -->
-
-                    <form
-                        method="POST"
-                        style="display:inline;"
-                    >
-
-                        <input
-                            type="hidden"
-                            name="action"
-                            value="accept"
-                        >
-
-                        <button
-                            type="submit"
-                            class="btn"
-                            onclick="return confirm('Accept this food request?');"
-                        >
-                            Accept Request
-                        </button>
-
-                    </form>
-
-
-                    <!-- Reject -->
-
-                    <form
-                        method="POST"
-                        style="display:inline;"
-                    >
-
-                        <input
-                            type="hidden"
-                            name="action"
-                            value="reject"
-                        >
-
-                        <button
-                            type="submit"
-                            class="btn"
-                            onclick="return confirm('Reject this food request?');"
-                        >
-                            Reject Request
-                        </button>
-
-                    </form>
-
-
-                </div>
-
-
-            <?php elseif ($request["status"] === "accepted"): ?>
-
-
-                <div class="alert success">
-
-                    This request has been accepted.
-
-                </div>
-
-
-                <a
-                    href="delivery-options.php?id=<?= (int)$request["request_id"] ?>"
-                    class="btn"
-                >
-                    Continue to Delivery Options
-                </a>
-
-
-            <?php elseif ($request["status"] === "rejected"): ?>
-
-
-                <div class="alert error">
-
-                    This request has been rejected.
-
-                </div>
-
-
-            <?php endif; ?>
-
-
-        </div>
-
     </div>
-
-
 </div>
 
+<?php if ($r['status'] === 'pending'): ?>
+    <div class="card">
+        <h3 class="card-title">Actions</h3>
+        <form method="post" style="display:inline">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="accept">
+            <button class="btn btn-primary">✅ Accept Request</button>
+        </form>
+        <form method="post" style="display:inline;margin-left:8px">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="reject">
+            <button class="btn btn-danger" data-confirm="Reject this request?">❌ Decline</button>
+        </form>
+    </div>
+<?php endif; ?>
 
-<?php
+<?php if ($r['status'] === 'accepted' && in_array($r['delivery_preference'], ['self_delivery','any'])): ?>
+    <div class="card">
+        <h3 class="card-title">Direct Delivery</h3>
+        <p>You chose to deliver this yourself. When you start, tell the recipient.</p>
+        <form method="post">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="start_delivery">
+            <button class="btn btn-primary">🚚 Start Delivery</button>
+        </form>
 
-require_once "../includes/footer.php";
+        <hr style="margin:20px 0">
 
-?>
+        <h4>Mark as Delivered</h4>
+        <p class="text-muted">Upload a photo of the food delivered as proof.</p>
+        <form method="post" enctype="multipart/form-data">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="mark_delivered">
+            <div class="form-group">
+                <input type="file" name="proof_image" class="form-control" accept="image/jpeg,image/png,image/webp" required>
+            </div>
+            <div class="form-group">
+                <textarea name="delivery_note" class="form-control" placeholder="Optional note"></textarea>
+            </div>
+            <button class="btn btn-primary">📷 Submit Delivery Proof</button>
+        </form>
+    </div>
+<?php endif; ?>
+
+<style>.details-grid { display:grid; grid-template-columns: 260px 1fr; gap:20px; } @media (max-width:700px){.details-grid{grid-template-columns:1fr}}</style>
+
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
