@@ -1,209 +1,156 @@
 <?php
+// collector/dashboard.php
+$pageTitle = 'Collector Dashboard';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
-require_once "../includes/notification-functions.php";
+if (current_role() !== 'collector' && current_role() !== 'admin') {
+    set_flash('error', 'Access denied.');
+    redirect(BASE_URL . 'index.php');
+}
 
-require_role("collector");
+$uid = current_user_id();
 
-$user_name = $_SESSION["name"] ?? "Collector";
+// ---- Stats ----
+$stats = $pdo->prepare("
+    SELECT
+      SUM(CASE WHEN status='available' THEN 1 ELSE 0 END) AS available_tasks,
+      SUM(CASE WHEN status='accepted'  THEN 1 ELSE 0 END) AS accepted_tasks,
+      SUM(CASE WHEN status IN ('pickup_started','picked_up','delivering') THEN 1 ELSE 0 END) AS active_deliveries,
+      SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed_tasks
+    FROM collector_tasks
+    WHERE collector_id = :u
+");
+$stats->execute([':u' => $uid]);
+$s = $stats->fetch();
+$s['available_tasks']    = $s['available_tasks']    ?? 0;
+$s['accepted_tasks']     = $s['accepted_tasks']     ?? 0;
+$s['active_deliveries']  = $s['active_deliveries']  ?? 0;
+$s['completed_tasks']    = $s['completed_tasks']    ?? 0;
 
-$page_title = "Collector Dashboard";
+// ---- Nearby available tasks (donations with collector preference) ----
+$me = $pdo->prepare("SELECT latitude, longitude FROM users WHERE user_id = :u");
+$me->execute([':u' => $uid]);
+$me = $me->fetch();
+$myLat = $me['latitude']  !== null ? (float)$me['latitude']  : null;
+$myLng = $me['longitude'] !== null ? (float)$me['longitude'] : null;
 
-require_once "../includes/header.php";
+$taskSql = "
+    SELECT d.*, u.name AS donor_name,
+           (SELECT COUNT(*) FROM collector_tasks ct WHERE ct.donation_id = d.donation_id AND ct.status IN ('accepted','pickup_started','picked_up','delivering')) AS taken
+    FROM food_donations d
+    JOIN users u ON u.user_id = d.donor_id
+    WHERE d.status IN ('requested','accepted')
+      AND d.delivery_preference IN ('collector','any')
+      AND (d.best_before IS NULL OR d.best_before > NOW())
+    ORDER BY d.created_at DESC
+    LIMIT 40
+";
+$tasks = $pdo->query($taskSql)->fetchAll();
+
+// Filter: only tasks not already taken + within 15 KM
+$nearby = [];
+foreach ($tasks as $t) {
+    if ((int)$t['taken'] > 0) continue;
+    if ($myLat !== null && $t['latitude'] !== null) {
+        $d = haversine_km($myLat, $myLng, (float)$t['latitude'], (float)$t['longitude']);
+        if ($d === null || $d > MATCH_RADIUS_KM) continue;
+        $t['distance_km'] = round($d, 2);
+    }
+    $nearby[] = $t;
+}
+usort($nearby, fn($a,$b) => ($a['distance_km'] ?? 0) <=> ($b['distance_km'] ?? 0));
+$preview = array_slice($nearby, 0, 4);
+
+// ---- My active tasks ----
+$active = $pdo->prepare("
+    SELECT ct.*, d.food_name, d.food_photo, d.city, d.area, u.name AS donor_name
+    FROM collector_tasks ct
+    JOIN food_donations d ON d.donation_id = ct.donation_id
+    JOIN users u ON u.user_id = d.donor_id
+    WHERE ct.collector_id = :u
+      AND ct.status IN ('accepted','pickup_started','picked_up','delivering')
+    ORDER BY ct.assigned_at DESC
+");
+$active->execute([':u' => $uid]);
+$activeTasks = $active->fetchAll();
 ?>
 
-<div class="dashboard-container">
-
-    <div class="dashboard-header">
-        <h1>Collector Dashboard</h1>
-
-        <p>
-            Welcome,
-            <strong><?= htmlspecialchars($user_name) ?></strong>
-        </p>
-
-        <p>
-            Help collect surplus food and deliver it to people who need it.
-        </p>
-    </div>
-
-
-    <div class="dashboard-cards">
-
-        <div class="dashboard-card">
-            <div class="card-icon">📦</div>
-
-            <h2>Available Tasks</h2>
-
-            <p>
-                View food collection requests available for collectors.
-            </p>
-
-            <a href="available-tasks.php" class="dashboard-btn">
-                View Tasks
-            </a>
-        </div>
-
-
-        <div class="dashboard-card">
-            <div class="card-icon">🚚</div>
-
-            <h2>My Tasks</h2>
-
-            <p>
-                View tasks that you have accepted.
-            </p>
-
-            <a href="my-tasks.php" class="dashboard-btn">
-                My Tasks
-            </a>
-        </div>
-
-
-        <div class="dashboard-card">
-            <div class="card-icon">📍</div>
-
-            <h2>Active Delivery</h2>
-
-            <p>
-                Manage your current food collection and delivery.
-            </p>
-
-            <a href="active-delivery.php" class="dashboard-btn">
-                Active Delivery
-            </a>
-        </div>
-
-
-        <div class="dashboard-card">
-            <div class="card-icon">✅</div>
-
-            <h2>Completed Tasks</h2>
-
-            <p>
-                View your completed delivery tasks.
-            </p>
-
-            <a href="completed-tasks.php" class="dashboard-btn">
-                Completed Tasks
-            </a>
-        </div>
-
-
-        <div class="dashboard-card">
-            <div class="card-icon">🔔</div>
-
-            <h2>Notifications</h2>
-
-            <p>
-                View your latest notifications.
-            </p>
-
-            <a href="notifications.php" class="dashboard-btn">
-                Notifications
-            </a>
-        </div>
-
-
-        <div class="dashboard-card">
-            <div class="card-icon">👤</div>
-
-            <h2>My Profile</h2>
-
-            <p>
-                View and update your collector profile.
-            </p>
-
-            <a href="profile.php" class="dashboard-btn">
-                My Profile
-            </a>
-        </div>
-
-    </div>
-
+<div class="stats-grid">
+    <div class="stat-card"><div class="icon-box green">📋</div>
+        <div><div class="stat-value"><?= (int)$s['available_tasks'] ?></div><div class="stat-label">Available</div></div></div>
+    <div class="stat-card"><div class="icon-box yellow">✅</div>
+        <div><div class="stat-value"><?= (int)$s['accepted_tasks'] ?></div><div class="stat-label">Accepted</div></div></div>
+    <div class="stat-card"><div class="icon-box blue">🚚</div>
+        <div><div class="stat-value"><?= (int)$s['active_deliveries'] ?></div><div class="stat-label">Active Deliveries</div></div></div>
+    <div class="stat-card"><div class="icon-box purple">🏁</div>
+        <div><div class="stat-value"><?= (int)$s['completed_tasks'] ?></div><div class="stat-label">Completed</div></div></div>
 </div>
 
+<div class="flex-between mb-2">
+    <h3>Nearby Pickup Tasks <span class="text-muted" style="font-size:14px">(within <?= MATCH_RADIUS_KM ?> KM)</span></h3>
+    <a href="<?= BASE_URL ?>collector/available-tasks.php" class="btn btn-outline btn-sm">View All</a>
+</div>
 
-<style>
+<?php if (!$preview): ?>
+    <div class="empty-state">
+        <div class="empty-icon">🚴</div>
+        <h3>No pickup tasks nearby</h3>
+        <p>New tasks will appear here automatically.</p>
+    </div>
+<?php else: ?>
+    <div class="table-card mb-3">
+        <table class="table">
+            <thead><tr><th>Food</th><th>Donor</th><th>Pickup</th><th>Distance</th><th>Urgency</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($preview as $t): ?>
+                <tr>
+                    <td class="flex gap-1" style="align-items:center">
+                        <img class="thumb" src="<?= food_photo_url($t['food_photo']) ?>" alt="">
+                        <div>
+                            <strong><?= sanitize($t['food_name']) ?></strong><br>
+                            <small class="text-muted"><?= (int)$t['people_served'] ?> meals · <?= sanitize($t['food_type']) ?></small>
+                        </div>
+                    </td>
+                    <td><?= sanitize($t['donor_name']) ?></td>
+                    <td><?= sanitize($t['area'] ?: $t['city']) ?></td>
+                    <td><?= isset($t['distance_km']) ? number_format($t['distance_km'],1).' KM' : '—' ?></td>
+                    <td>
+                        <?php
+                            $uCls = in_array($t['urgency'], ['urgent','very_urgent']) ? 'badge-red' : 'badge-yellow';
+                            $uTxt = ucfirst(str_replace('_',' ',$t['urgency']));
+                        ?>
+                        <span class="badge <?= $uCls ?>"><?= $uTxt ?></span>
+                    </td>
+                    <td>
+                        <a href="<?= BASE_URL ?>collector/task-details.php?id=<?= (int)$t['donation_id'] ?>"
+                           class="btn btn-primary btn-sm">Open</a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+<?php endif; ?>
 
-.dashboard-container {
-    max-width: 1200px;
-    margin: 30px auto;
-    padding: 20px;
-}
+<h3 class="mb-2">My Active Deliveries (<?= count($activeTasks) ?>)</h3>
+<div class="table-card">
+    <?php if (!$activeTasks): ?>
+        <div style="padding:40px;text-align:center"><p class="text-muted">No active deliveries.</p></div>
+    <?php else: ?>
+        <table class="table">
+            <thead><tr><th>Food</th><th>Donor</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($activeTasks as $t): ?>
+                <tr>
+                    <td><?= sanitize($t['food_name']) ?></td>
+                    <td><?= sanitize($t['donor_name']) ?></td>
+                    <td><?= status_badge($t['status']) ?></td>
+                    <td><a href="<?= BASE_URL ?>collector/active-delivery.php?id=<?= (int)$t['task_id'] ?>" class="btn btn-primary btn-sm">Continue</a></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+</div>
 
-.dashboard-header {
-    padding: 25px;
-    margin-bottom: 25px;
-    border-radius: 15px;
-    background: #f5f7fa;
-}
-
-.dashboard-header h1 {
-    margin-bottom: 10px;
-}
-
-.dashboard-header p {
-    margin: 6px 0;
-}
-
-.dashboard-cards {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 20px;
-}
-
-.dashboard-card {
-    padding: 25px;
-    background: white;
-    border-radius: 15px;
-    box-shadow: 0 3px 12px rgba(0,0,0,0.08);
-}
-
-.card-icon {
-    font-size: 35px;
-    margin-bottom: 10px;
-}
-
-.dashboard-card h2 {
-    margin-bottom: 10px;
-}
-
-.dashboard-card p {
-    color: #666;
-    line-height: 1.5;
-    min-height: 60px;
-}
-
-.dashboard-btn {
-    display: inline-block;
-    padding: 10px 18px;
-    margin-top: 10px;
-    background: #333;
-    color: white;
-    text-decoration: none;
-    border-radius: 8px;
-}
-
-.dashboard-btn:hover {
-    opacity: 0.85;
-}
-
-@media (max-width: 900px) {
-    .dashboard-cards {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 600px) {
-    .dashboard-cards {
-        grid-template-columns: 1fr;
-    }
-}
-
-</style>
-
-<?php require_once "../includes/footer.php"; ?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
