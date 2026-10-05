@@ -1,174 +1,55 @@
 <?php
+// recipient/my-requests.php
+$pageTitle = 'My Requests';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/role-check.php";
-
-require_role("recipient");
-
-
-$stmt = $conn->prepare(
-
-    "SELECT
-        r.*,
-        d.food_name,
-        d.unit,
-        d.city,
-        d.area
-
-     FROM food_requests r
-
-     INNER JOIN food_donations d
-        ON r.donation_id =
-           d.donation_id
-
-     WHERE r.recipient_id = ?
-
-     ORDER BY r.requested_at DESC"
-
-);
-
-
-$stmt->bind_param(
-    "i",
-    $_SESSION["user_id"]
-);
-
-
-$stmt->execute();
-
-
-$result =
-    $stmt->get_result();
-
-
-$page_title =
-    "My Requests";
-
-require_once "../includes/header.php";
-
+$uid = current_user_id();
+$stmt = $pdo->prepare("
+    SELECT fr.*, d.food_name, d.food_photo, d.unit, d.best_before, d.city, d.area,
+           u.name AS donor_name
+    FROM food_requests fr
+    JOIN food_donations d ON d.donation_id = fr.donation_id
+    JOIN users u ON u.user_id = d.donor_id
+    WHERE fr.recipient_id = :u
+    ORDER BY fr.requested_at DESC
+");
+$stmt->execute([':u' => $uid]);
+$requests = $stmt->fetchAll();
 ?>
 
-
-<h1>
-    My Food Requests
-</h1>
-
-
-<div class="grid">
-
-
-<?php if ($result->num_rows > 0): ?>
-
-
-    <?php while (
-        $request =
-        $result->fetch_assoc()
-    ): ?>
-
-
-        <div class="card">
-
-
-            <h3>
-
-                <?= e(
-                    $request["food_name"]
-                ) ?>
-
-            </h3>
-
-
-            <p>
-
-                <strong>
-                    Quantity:
-                </strong>
-
-                <?= e(
-                    $request["quantity"]
-                ) ?>
-
-                <?= e(
-                    $request["unit"]
-                ) ?>
-
-            </p>
-
-
-            <p>
-
-                <strong>
-                    Location:
-                </strong>
-
-                <?= e(
-                    $request["area"]
-                ) ?>,
-
-                <?= e(
-                    $request["city"]
-                ) ?>
-
-            </p>
-
-
-            <p>
-
-                <strong>
-                    Status:
-                </strong>
-
-                <?= e(
-                    ucfirst(
-                        $request["status"]
-                    )
-                ) ?>
-
-            </p>
-
-
-            <br>
-
-
-            <a
-                href="request-details.php?id=<?= (int)$request["request_id"] ?>"
-                class="btn"
-            >
-                View Request
-            </a>
-
-
+<div class="table-card">
+    <div class="table-card-header"><h3>My Requests (<?= count($requests) ?>)</h3></div>
+    <?php if (!$requests): ?>
+        <div style="padding:40px;text-align:center">
+            <p class="text-muted">You haven't made any requests yet.</p>
+            <a href="<?= BASE_URL ?>recipient/available-food.php" class="btn btn-primary mt-2">Browse Available Food</a>
         </div>
-
-
-    <?php endwhile; ?>
-
-
-<?php else: ?>
-
-
-    <div class="card">
-
-        <h3>
-            No Requests
-        </h3>
-
-        <p>
-            You have not requested any food yet.
-        </p>
-
-    </div>
-
-
-<?php endif; ?>
-
-
+    <?php else: ?>
+        <table class="table">
+            <thead><tr><th>Food</th><th>Donor</th><th>Qty</th><th>Status</th><th>Requested</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($requests as $r): ?>
+                <tr>
+                    <td class="flex gap-1" style="align-items:center">
+                        <img class="thumb" src="<?= food_photo_url($r['food_photo']) ?>" alt="">
+                        <div>
+                            <strong><?= sanitize($r['food_name']) ?></strong><br>
+                            <small class="text-muted"><?= sanitize($r['area'] ?: $r['city']) ?></small>
+                        </div>
+                    </td>
+                    <td><?= sanitize($r['donor_name']) ?></td>
+                    <td><?= (float)$r['quantity'] ?> <?= sanitize($r['unit']) ?></td>
+                    <td><?= status_badge($r['status']) ?></td>
+                    <td><?= time_ago($r['requested_at']) ?></td>
+                    <td>
+                        <a href="<?= BASE_URL ?>recipient/request-details.php?id=<?= (int)$r['request_id'] ?>"
+                           class="btn btn-outline btn-sm">Open</a>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
 </div>
 
-
-<?php
-
-require_once "../includes/footer.php";
-
-?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
