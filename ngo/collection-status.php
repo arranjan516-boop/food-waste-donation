@@ -1,159 +1,98 @@
 <?php
-session_start();
+// ngo/collection-status.php
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/notification-functions.php';
 
-require_once "../config/database.php";
-require_once "../includes/ngo-layout.php";
-
-if (!isset($_SESSION['user_id'])) {
-    header("Location: ../login.php");
-    exit;
+require_login();
+if (current_role() !== 'ngo' && current_role() !== 'admin') {
+    set_flash('error', 'Access denied.');
+    redirect(BASE_URL . 'index.php');
 }
 
-$ngo_id = (int)$_SESSION['user_id'];
-$delivery_id = (int)($_GET['id'] ?? 0);
+$uid = current_user_id();
+$nrId = int_get('id');
 
-if ($delivery_id <= 0) {
-    header("Location: my-donations.php");
-    exit;
-}
-
-$stmt = $conn->prepare("
-    SELECT
-        dl.*,
-        fd.food_name,
-        fd.food_category,
-        fd.quantity,
-        fd.unit,
-        fd.city,
-        fd.area,
-        fd.address,
-        fd.food_photo
-    FROM deliveries dl
-
-    INNER JOIN food_donations fd
-        ON fd.donation_id = dl.donation_id
-
-    WHERE dl.delivery_id = ?
-    AND dl.ngo_id = ?
-
-    LIMIT 1
+$stmt = $pdo->prepare("
+    SELECT nr.*, d.donation_id, d.food_name, d.food_photo, d.unit, d.quantity, d.people_served,
+           d.address AS pickup_address, d.area AS pickup_area, d.city AS pickup_city,
+           d.best_before, u.name AS donor_name, u.phone AS donor_phone
+    FROM ngo_requests nr
+    JOIN food_donations d ON d.donation_id = nr.donation_id
+    JOIN users u ON u.user_id = d.donor_id
+    WHERE nr.ngo_request_id = :n AND nr.ngo_id = :u
 ");
+$stmt->execute([':n' => $nrId, ':u' => $uid]);
+$r = $stmt->fetch();
+if (!$r) { set_flash('error', 'Record not found.'); redirect(BASE_URL . 'ngo/my-donations.php'); }
 
-$stmt->bind_param("ii", $delivery_id, $ngo_id);
-$stmt->execute();
+$errors = [];
 
-$row = $stmt->get_result()->fetch_assoc();
-$stmt->close();
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $action = post('action');
 
-if (!$row) {
-    header("Location: my-donations.php");
-    exit;
+    if ($action === 'mark_collected') {
+        $pdo->prepare("UPDATE ngo_requests SET status='completed', notes = CONCAT(COALESCE(notes,''), ' | Collected at ', NOW()) WHERE ngo_request_id=:n")
+            ->execute([':n' => $nrId]);
+        $pdo->prepare("UPDATE food_donations SET status='picked_up' WHERE donation_id=:d")
+            ->execute([':d' => $r['donation_id']]);
+
+        $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by)
+                       VALUES (:d, 'ngo_assigned', 'picked_up', :u)")
+            ->execute([':d' => $r['donation_id'], ':u' => $uid]);
+
+        notify($pdo, $r['donor_id'], '🍱 Food Collected',
+            'Your donation "' . $r['food_name'] . '" has been collected by ' . current_user()['name'] . '.',
+            'ngo', $r['donation_id']);
+
+        set_flash('success', 'Marked as collected.');
+        redirect(BASE_URL . 'ngo/distribution.php?id=' . $nrId);
+    }
 }
 
-ngo_header("Collection Status");
+$pageTitle = 'Collection Status';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 ?>
 
-<div class="ngo-content">
+<?php if ($errors): ?>
+    <div class="toast toast-error"><?php foreach ($errors as $e): ?><?= sanitize($e) ?><br><?php endforeach; ?></div>
+<?php endif; ?>
 
-    <div class="ngo-page-header">
-
-        <div>
-            <h1>Collection Status</h1>
-            <p>Track this donation from pickup to delivery.</p>
-        </div>
-
-        <a
-            href="my-donations.php"
-            class="ngo-btn ngo-btn-outline">
-            ← Back
-        </a>
-
+<div class="card mb-3">
+    <div class="flex-between mb-2">
+        <h2><?= sanitize($r['food_name']) ?></h2>
+        <?= status_badge($r['status']) ?>
     </div>
 
-    <section class="ngo-section">
-
-        <div class="ngo-detail-grid">
-
-            <div>
-
-                <?php
-                $photo = !empty($row['food_photo'])
-                    ? "../uploads/food/" . htmlspecialchars($row['food_photo'])
-                    : "../assets/images/no-food.png";
-                ?>
-
-                <img
-                    src="<?= $photo ?>"
-                    class="ngo-detail-image"
-                    alt="Food">
-
-            </div>
-
-            <div>
-
-                <span class="ngo-badge">
-                    <?= htmlspecialchars($row['status']) ?>
-                </span>
-
-                <h2>
-                    <?= htmlspecialchars($row['food_name']) ?>
-                </h2>
-
-                <div class="ngo-info-list">
-
-                    <div>
-                        <strong>Quantity</strong>
-                        <span>
-                            <?= htmlspecialchars($row['quantity']) ?>
-                            <?= htmlspecialchars($row['unit'] ?? '') ?>
-                        </span>
-                    </div>
-
-                    <div>
-                        <strong>Pickup Location</strong>
-                        <span>
-                            <?= htmlspecialchars($row['area'] ?? '') ?>,
-                            <?= htmlspecialchars($row['city'] ?? '') ?>
-                        </span>
-                    </div>
-
-                    <div>
-                        <strong>Delivery Method</strong>
-                        <span><?= htmlspecialchars($row['method']) ?></span>
-                    </div>
-
-                    <div>
-                        <strong>Created</strong>
-                        <span><?= htmlspecialchars($row['created_at']) ?></span>
-                    </div>
-
-                    <div>
-                        <strong>Confirmed</strong>
-                        <span><?= htmlspecialchars($row['confirmed_at'] ?? 'Not confirmed') ?></span>
-                    </div>
-
-                    <div>
-                        <strong>Delivered</strong>
-                        <span><?= htmlspecialchars($row['delivered_at'] ?? 'Not delivered') ?></span>
-                    </div>
-
-                </div>
-
-                <?php if (!empty($row['notes'])): ?>
-
-                    <div class="ngo-note">
-                        <strong>Notes</strong>
-                        <p><?= nl2br(htmlspecialchars($row['notes'])) ?></p>
-                    </div>
-
-                <?php endif; ?>
-
-            </div>
-
+    <div class="details-grid">
+        <img src="<?= food_photo_url($r['food_photo']) ?>" alt="">
+        <div>
+            <h4>📍 Pickup From</h4>
+            <p><strong><?= sanitize($r['donor_name']) ?></strong></p>
+            <p><?= sanitize($r['pickup_address']) ?>, <?= sanitize($r['pickup_area']) ?>, <?= sanitize($r['pickup_city']) ?></p>
+            <p><strong>Phone:</strong> <?= sanitize($r['donor_phone'] ?: '—') ?></p>
+            <p style="margin-top:12px"><strong>Quantity:</strong> <?= (float)$r['quantity'] ?> <?= sanitize($r['unit']) ?></p>
+            <p><strong>People served:</strong> <?= (int)$r['people_served'] ?></p>
+            <p><strong>Best before:</strong> <?= $r['best_before'] ? date('d M Y, h:i A', strtotime($r['best_before'])) : '—' ?></p>
         </div>
-
-    </section>
-
+    </div>
 </div>
 
-<?php ngo_footer(); ?>
+<div class="card">
+    <h3 class="card-title">Collection</h3>
+    <p class="text-muted">Once you have picked up the food from the donor, mark it as collected.</p>
+    <form method="post">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="mark_collected">
+        <button class="btn btn-primary btn-lg" data-confirm="Confirm you have collected the food?">🍱 Mark as Collected</button>
+    </form>
+</div>
+
+<style>
+.details-grid { display:grid; grid-template-columns: 260px 1fr; gap:20px; }
+.details-grid img { width:100%; border-radius:12px; }
+@media (max-width: 700px) { .details-grid { grid-template-columns: 1fr; } }
+</style>
+
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
