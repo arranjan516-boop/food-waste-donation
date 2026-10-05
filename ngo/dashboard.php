@@ -1,563 +1,112 @@
 <?php
+// ngo/dashboard.php
+$pageTitle = 'NGO Dashboard';
+require_once __DIR__ . '/../includes/dashboard-header.php';
+require_once __DIR__ . '/../includes/location-functions.php';
 
-session_start();
-
-require_once "../config/database.php";
-require_once "../includes/ngo-layout.php";
-
-if (!isset($_SESSION['user_id'])) {
-    header("Location: ../login.php");
-    exit;
+if (current_role() !== 'ngo' && current_role() !== 'admin') {
+    set_flash('error', 'Access denied.');
+    redirect(BASE_URL . 'index.php');
 }
 
-$ngo_id = (int)$_SESSION['user_id'];
+$uid = current_user_id();
 
-
-/* =========================================================
-   STATISTICS
-========================================================= */
-
-$total_available = 0;
-$total_pending = 0;
-$total_accepted = 0;
-$total_completed = 0;
-
-
-/* Available */
-
-$result = $conn->query("
-    SELECT COUNT(*) AS total
-    FROM food_donations
-    WHERE status = 'available'
-");
-
-if ($result) {
-    $row = $result->fetch_assoc();
-    $total_available = (int)$row['total'];
-}
-
-
-/* Pending */
-
-$stmt = $conn->prepare("
-    SELECT COUNT(*) AS total
-    FROM deliveries
-    WHERE ngo_id = ?
-    AND status = 'pending'
-");
-
-if ($stmt) {
-
-    $stmt->bind_param("i", $ngo_id);
-
-    $stmt->execute();
-
-    $result = $stmt->get_result();
-
-    if ($row = $result->fetch_assoc()) {
-        $total_pending = (int)$row['total'];
-    }
-
-    $stmt->close();
-}
-
-
-/* Accepted / In progress */
-
-$stmt = $conn->prepare("
-    SELECT COUNT(*) AS total
-    FROM deliveries
-    WHERE ngo_id = ?
-    AND status <> 'pending'
-    AND status <> 'delivered'
-");
-
-if ($stmt) {
-
-    $stmt->bind_param("i", $ngo_id);
-
-    $stmt->execute();
-
-    $result = $stmt->get_result();
-
-    if ($row = $result->fetch_assoc()) {
-        $total_accepted = (int)$row['total'];
-    }
-
-    $stmt->close();
-}
-
-
-/* Completed */
-
-$stmt = $conn->prepare("
-    SELECT COUNT(*) AS total
-    FROM deliveries
-    WHERE ngo_id = ?
-    AND status = 'delivered'
-");
-
-if ($stmt) {
-
-    $stmt->bind_param("i", $ngo_id);
-
-    $stmt->execute();
-
-    $result = $stmt->get_result();
-
-    if ($row = $result->fetch_assoc()) {
-        $total_completed = (int)$row['total'];
-    }
-
-    $stmt->close();
-}
-
-
-/* =========================================================
-   RECENT DONATIONS
-========================================================= */
-
-$recent = $conn->query("
+// ---- Stats ----
+$stats = $pdo->prepare("
     SELECT
-        donation_id,
-        food_name,
-        food_category,
-        quantity,
-        unit,
-        food_photo,
-        city,
-        area,
-        status
-    FROM food_donations
-    WHERE status = 'available'
-    ORDER BY donation_id DESC
-    LIMIT 6
+      (SELECT COUNT(*) FROM ngo_requests WHERE ngo_id = :u1 AND status='pending')  AS pending_requests,
+      (SELECT COUNT(*) FROM ngo_requests WHERE ngo_id = :u2 AND status='accepted') AS accepted_requests,
+      (SELECT COALESCE(SUM(d.people_served),0) FROM ngo_requests nr
+        JOIN food_donations d ON d.donation_id = nr.donation_id
+        WHERE nr.ngo_id = :u3 AND nr.status='accepted') AS food_collected,
+      (SELECT COUNT(*) FROM ngo_requests WHERE ngo_id = :u4 AND status='completed') AS completed,
+      (SELECT COUNT(*) FROM food_donations WHERE status IN ('requested','accepted')
+        AND delivery_preference IN ('ngo','any')) AS available_donations
 ");
+$stats->execute([':u1' => $uid, ':u2' => $uid, ':u3' => $uid, ':u4' => $uid]);
+$s = $stats->fetch();
 
+// ---- Nearby available donations (NGO-eligible) ----
+$me = $pdo->prepare("SELECT latitude, longitude FROM users WHERE user_id = :u");
+$me->execute([':u' => $uid]);
+$me = $me->fetch();
+$myLat = $me['latitude']  !== null ? (float)$me['latitude']  : null;
+$myLng = $me['longitude'] !== null ? (float)$me['longitude'] : null;
 
-ngo_header("NGO Dashboard");
+$all = $pdo->query("
+    SELECT d.*, u.name AS donor_name,
+      (SELECT COUNT(*) FROM ngo_requests nr WHERE nr.donation_id = d.donation_id AND nr.status IN ('accepted','completed')) AS ngo_taken
+    FROM food_donations d
+    JOIN users u ON u.user_id = d.donor_id
+    WHERE d.status IN ('available','requested','accepted')
+      AND d.delivery_preference IN ('ngo','any')
+      AND (d.best_before IS NULL OR d.best_before > NOW())
+    ORDER BY d.created_at DESC
+    LIMIT 40
+")->fetchAll();
 
+$nearby = [];
+foreach ($all as $d) {
+    if ((int)$d['ngo_taken'] > 0) continue;
+    if ($myLat !== null && $d['latitude'] !== null) {
+        $km = haversine_km($myLat, $myLng, (float)$d['latitude'], (float)$d['longitude']);
+        if ($km === null || $km > MATCH_RADIUS_KM) continue;
+        $d['distance_km'] = round($km, 2);
+    }
+    $nearby[] = $d;
+}
+usort($nearby, fn($a,$b) => ($a['distance_km'] ?? 0) <=> ($b['distance_km'] ?? 0));
+$preview = array_slice($nearby, 0, 5);
 ?>
 
-<!-- =======================================================
-     WELCOME
-======================================================== -->
-
-<div class="ngo-page-header">
-
-    <div>
-
-        <h1>NGO Dashboard</h1>
-
-        <p>
-            Welcome back! Manage donations and help reduce food waste.
-        </p>
-
-    </div>
-
-    <a href="available-donations.php"
-       class="ngo-btn ngo-btn-primary">
-
-        <i class="fa-solid fa-plus"></i>
-
-        Find Donations
-
-    </a>
-
+<div class="stats-grid">
+    <div class="stat-card"><div class="icon-box green">🍱</div>
+        <div><div class="stat-value"><?= (int)$s['available_donations'] ?></div><div class="stat-label">Available</div></div></div>
+    <div class="stat-card"><div class="icon-box yellow">⏳</div>
+        <div><div class="stat-value"><?= (int)$s['pending_requests'] ?></div><div class="stat-label">Pending</div></div></div>
+    <div class="stat-card"><div class="icon-box blue">👍</div>
+        <div><div class="stat-value"><?= (int)$s['accepted_requests'] ?></div><div class="stat-label">Accepted</div></div></div>
+    <div class="stat-card"><div class="icon-box orange">👥</div>
+        <div><div class="stat-value"><?= number_format((int)$s['food_collected']) ?></div><div class="stat-label">People Served</div></div></div>
+    <div class="stat-card"><div class="icon-box purple">✅</div>
+        <div><div class="stat-value"><?= (int)$s['completed'] ?></div><div class="stat-label">Completed</div></div></div>
 </div>
 
-
-<!-- =======================================================
-     STATISTICS
-======================================================== -->
-
-<div class="ngo-stats">
-
-
-    <!-- Available -->
-
-    <div class="ngo-stat">
-
-        <div>
-
-            <span class="ngo-stat-label">
-                Available Donations
-            </span>
-
-            <strong>
-                <?= $total_available ?>
-            </strong>
-
-        </div>
-
-        <div class="ngo-stat-icon">
-            🍱
-        </div>
-
-    </div>
-
-
-    <!-- Pending -->
-
-    <div class="ngo-stat">
-
-        <div>
-
-            <span class="ngo-stat-label">
-                Pending Requests
-            </span>
-
-            <strong>
-                <?= $total_pending ?>
-            </strong>
-
-        </div>
-
-        <div class="ngo-stat-icon">
-            ⏳
-        </div>
-
-    </div>
-
-
-    <!-- Accepted -->
-
-    <div class="ngo-stat">
-
-        <div>
-
-            <span class="ngo-stat-label">
-                Accepted Donations
-            </span>
-
-            <strong>
-                <?= $total_accepted ?>
-            </strong>
-
-        </div>
-
-        <div class="ngo-stat-icon">
-            🚚
-        </div>
-
-    </div>
-
-
-    <!-- Completed -->
-
-    <div class="ngo-stat">
-
-        <div>
-
-            <span class="ngo-stat-label">
-                Food Delivered
-            </span>
-
-            <strong>
-                <?= $total_completed ?>
-            </strong>
-
-        </div>
-
-        <div class="ngo-stat-icon">
-            ❤️
-        </div>
-
-    </div>
-
+<div class="flex-between mb-2">
+    <h3>Nearby Donations <span class="text-muted" style="font-size:14px">(within <?= MATCH_RADIUS_KM ?> KM)</span></h3>
+    <a href="<?= BASE_URL ?>ngo/available-donations.php" class="btn btn-outline btn-sm">View All</a>
 </div>
 
-
-<!-- =======================================================
-     RECENT DONATIONS
-======================================================== -->
-
-<section class="ngo-section">
-
-    <div class="ngo-section-header">
-
-        <div>
-
-            <h2>
-                Nearby Donations
-            </h2>
-
-            <p>
-                Recently posted food available for your NGO.
-            </p>
-
-        </div>
-
-        <a href="available-donations.php"
-           class="ngo-btn ngo-btn-outline">
-
-            View All
-
-            <i class="fa-solid fa-arrow-right"></i>
-
-        </a>
-
+<?php if (!$preview): ?>
+    <div class="empty-state">
+        <div class="empty-icon">🏢</div>
+        <h3>No nearby donations</h3>
+        <p>New NGO-eligible donations will appear here.</p>
     </div>
-
-
-    <?php if ($recent && $recent->num_rows > 0): ?>
-
-        <div class="ngo-donation-grid">
-
-            <?php while ($food = $recent->fetch_assoc()): ?>
-
-
-                <?php
-
-                if (!empty($food['food_photo'])) {
-
-                    $photo =
-                        "../uploads/food/" .
-                        htmlspecialchars($food['food_photo']);
-
-                } else {
-
-                    $photo =
-                        "../assets/images/no-food.png";
-
-                }
-
-                ?>
-
-
-                <div class="ngo-donation-card">
-
-
-                    <img
-                        src="<?= $photo ?>"
-                        class="ngo-food-image"
-                        alt="Food Donation">
-
-
-                    <div class="ngo-card-body">
-
-
-                        <div class="ngo-card-title-row">
-
-                            <h3>
-                                <?= htmlspecialchars(
-                                    $food['food_name']
-                                ) ?>
-                            </h3>
-
-                            <span class="ngo-badge">
-
-                                Available
-
-                            </span>
-
+<?php else: ?>
+    <div class="table-card">
+        <table class="table">
+            <thead><tr><th>Food</th><th>Donor</th><th>Location</th><th>Distance</th><th>People</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($preview as $d): ?>
+                <tr>
+                    <td class="flex gap-1" style="align-items:center">
+                        <img class="thumb" src="<?= food_photo_url($d['food_photo']) ?>" alt="">
+                        <div>
+                            <strong><?= sanitize($d['food_name']) ?></strong><br>
+                            <small class="text-muted"><?= sanitize($d['food_type']) ?></small>
                         </div>
-
-
-                        <p>
-
-                            <?= htmlspecialchars(
-                                $food['food_category'] ??
-                                'Food'
-                            ) ?>
-
-                        </p>
-
-
-                        <div class="ngo-food-meta">
-
-                            <span>
-
-                                <i class="fa-solid fa-box"></i>
-
-                                <?= htmlspecialchars(
-                                    $food['quantity']
-                                ) ?>
-
-                                <?= htmlspecialchars(
-                                    $food['unit'] ?? ''
-                                ) ?>
-
-                            </span>
-
-
-                            <span>
-
-                                <i class="fa-solid fa-location-dot"></i>
-
-                                <?= htmlspecialchars(
-                                    $food['area'] ??
-                                    $food['city'] ??
-                                    'Nearby'
-                                ) ?>
-
-                            </span>
-
-                        </div>
-
-
-                        <a
-                            href="donation-details.php?id=<?= (int)$food['donation_id'] ?>"
-                            class="ngo-btn ngo-btn-primary ngo-btn-full">
-
-                            View Donation
-
-                            <i class="fa-solid fa-arrow-right"></i>
-
-                        </a>
-
-                    </div>
-
-                </div>
-
-
-            <?php endwhile; ?>
-
-        </div>
-
-
-    <?php else: ?>
-
-
-        <div class="ngo-empty">
-
-            <div>
-                🍽️
-            </div>
-
-            <h3>
-                No donations available
-            </h3>
-
-            <p>
-                New food donations will appear here.
-            </p>
-
-        </div>
-
-
-    <?php endif; ?>
-
-</section>
-
-
-<!-- =======================================================
-     QUICK ACTIONS
-======================================================== -->
-
-<section class="ngo-section">
-
-    <div class="ngo-section-header">
-
-        <div>
-
-            <h2>
-                Quick Actions
-            </h2>
-
-            <p>
-                Quickly access your most used NGO features.
-            </p>
-
-        </div>
-
+                    </td>
+                    <td><?= sanitize($d['donor_name']) ?></td>
+                    <td><?= sanitize($d['area'] ?: $d['city']) ?></td>
+                    <td><?= isset($d['distance_km']) ? number_format($d['distance_km'],1).' KM' : '—' ?></td>
+                    <td><?= (int)$d['people_served'] ?></td>
+                    <td><a href="<?= BASE_URL ?>ngo/donation-details.php?id=<?= (int)$d['donation_id'] ?>" class="btn btn-primary btn-sm">Open</a></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
+<?php endif; ?>
 
-
-    <div class="ngo-donation-grid">
-
-
-        <a
-            href="available-donations.php"
-            class="ngo-donation-card"
-            style="text-decoration:none;color:inherit;">
-
-            <div class="ngo-card-body"
-                 style="text-align:center;padding:30px;">
-
-                <div class="ngo-stat-icon"
-                     style="margin:auto auto 15px;">
-
-                    🍱
-
-                </div>
-
-                <h3>
-                    Find Food
-                </h3>
-
-                <p>
-                    View available food donations.
-                </p>
-
-            </div>
-
-        </a>
-
-
-        <a
-            href="my-donations.php"
-            class="ngo-donation-card"
-            style="text-decoration:none;color:inherit;">
-
-            <div class="ngo-card-body"
-                 style="text-align:center;padding:30px;">
-
-                <div class="ngo-stat-icon"
-                     style="margin:auto auto 15px;">
-
-                    📦
-
-                </div>
-
-                <h3>
-                    My Donations
-                </h3>
-
-                <p>
-                    Track your accepted donations.
-                </p>
-
-            </div>
-
-        </a>
-
-
-        <a
-            href="distribution.php"
-            class="ngo-donation-card"
-            style="text-decoration:none;color:inherit;">
-
-            <div class="ngo-card-body"
-                 style="text-align:center;padding:30px;">
-
-                <div class="ngo-stat-icon"
-                     style="margin:auto auto 15px;">
-
-                    ❤️
-
-                </div>
-
-                <h3>
-                    Distribution
-                </h3>
-
-                <p>
-                    Manage food distribution.
-                </p>
-
-            </div>
-
-        </a>
-
-
-    </div>
-
-</section>
-
-
-<?php
-
-ngo_footer();
-
-?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
