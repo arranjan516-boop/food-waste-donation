@@ -1,21 +1,33 @@
 <?php
 // donor/notifications.php
-$pageTitle = 'Notifications';
-require_once __DIR__ . '/../includes/dashboard-header.php';
 
+// --- Handle POST BEFORE any HTML is output ---
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/notification-functions.php';
+
+require_login();
 $uid = current_user_id();
 
-// Mark one read
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && post('action') === 'read') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
-    mark_notification_read($pdo, int_post('id'), $uid);
-    redirect(BASE_URL . 'donor/notifications.php');
+    $action = post('action');
+
+    if ($action === 'read') {
+        mark_notification_read($pdo, int_post('id'), $uid);
+        set_flash('success', 'Marked as read.');
+        redirect(BASE_URL . 'donor/notifications.php');
+    }
+    if ($action === 'read_all') {
+        mark_all_notifications_read($pdo, $uid);
+        set_flash('success', 'All notifications marked as read.');
+        redirect(BASE_URL . 'donor/notifications.php');
+    }
 }
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && post('action') === 'read_all') {
-    verify_csrf();
-    mark_all_notifications_read($pdo, $uid);
-    redirect(BASE_URL . 'donor/notifications.php');
-}
+
+// --- NOW safe to output HTML ---
+$pageTitle = 'Notifications';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 
 $notifs = get_notifications($pdo, $uid, 100);
 ?>
