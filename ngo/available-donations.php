@@ -1,194 +1,85 @@
 <?php
-session_start();
+// ngo/available-donations.php
+$pageTitle = 'Available Donations';
+require_once __DIR__ . '/../includes/dashboard-header.php';
+require_once __DIR__ . '/../includes/location-functions.php';
 
-require_once "../config/database.php";
-require_once "../includes/ngo-layout.php";
-
-if (!isset($_SESSION['user_id'])) {
-    header("Location: ../login.php");
-    exit;
+if (current_role() !== 'ngo' && current_role() !== 'admin') {
+    set_flash('error', 'Access denied.');
+    redirect(BASE_URL . 'index.php');
 }
 
-$search = trim($_GET['search'] ?? '');
-$category = trim($_GET['category'] ?? '');
+$uid = current_user_id();
+$me = $pdo->prepare("SELECT latitude, longitude FROM users WHERE user_id = :u");
+$me->execute([':u' => $uid]);
+$me = $me->fetch();
+$myLat = $me['latitude']  !== null ? (float)$me['latitude']  : null;
+$myLng = $me['longitude'] !== null ? (float)$me['longitude'] : null;
 
-$sql = "
-    SELECT
-        donation_id,
-        food_name,
-        food_category,
-        food_type,
-        description,
-        quantity,
-        unit,
-        food_photo,
-        city,
-        area,
-        pincode,
-        best_before,
-        urgency,
-        status
-    FROM food_donations
-    WHERE status = 'available'
-";
+$all = $pdo->query("
+    SELECT d.*, u.name AS donor_name,
+      (SELECT COUNT(*) FROM ngo_requests nr WHERE nr.donation_id = d.donation_id AND nr.status IN ('accepted','completed')) AS ngo_taken
+    FROM food_donations d
+    JOIN users u ON u.user_id = d.donor_id
+    WHERE d.status IN ('available','requested','accepted')
+      AND d.delivery_preference IN ('ngo','any')
+      AND (d.best_before IS NULL OR d.best_before > NOW())
+    ORDER BY d.created_at DESC
+    LIMIT 80
+")->fetchAll();
 
-$params = [];
-$types = "";
-
-if ($search !== '') {
-    $sql .= "
-        AND (
-            food_name LIKE ?
-            OR food_category LIKE ?
-            OR city LIKE ?
-            OR area LIKE ?
-        )
-    ";
-
-    $like = "%" . $search . "%";
-
-    $params[] = $like;
-    $params[] = $like;
-    $params[] = $like;
-    $params[] = $like;
-
-    $types .= "ssss";
+$rows = [];
+foreach ($all as $d) {
+    if ((int)$d['ngo_taken'] > 0) continue;
+    if ($myLat !== null && $d['latitude'] !== null) {
+        $km = haversine_km($myLat, $myLng, (float)$d['latitude'], (float)$d['longitude']);
+        if ($km === null || $km > MATCH_RADIUS_KM) continue;
+        $d['distance_km'] = round($km, 2);
+    }
+    $rows[] = $d;
 }
-
-if ($category !== '') {
-    $sql .= " AND food_category = ?";
-    $params[] = $category;
-    $types .= "s";
-}
-
-$sql .= " ORDER BY donation_id DESC";
-
-$stmt = $conn->prepare($sql);
-
-if (!empty($params)) {
-    $stmt->bind_param($types, ...$params);
-}
-
-$stmt->execute();
-$donations = $stmt->get_result();
-
-ngo_header("Available Donations");
+usort($rows, fn($a,$b) => ($a['distance_km'] ?? 0) <=> ($b['distance_km'] ?? 0));
 ?>
 
-<div class="ngo-content">
-
-    <div class="ngo-page-header">
-        <div>
-            <h1>Available Donations</h1>
-            <p>Find food donations available for collection.</p>
-        </div>
-    </div>
-
-    <section class="ngo-section">
-
-        <form method="GET" class="ngo-filter-bar">
-
-            <input
-                type="text"
-                name="search"
-                value="<?= htmlspecialchars($search) ?>"
-                placeholder="Search food, category or location...">
-
-            <input
-                type="text"
-                name="category"
-                value="<?= htmlspecialchars($category) ?>"
-                placeholder="Food category">
-
-            <button type="submit" class="ngo-btn ngo-btn-primary">
-                Search
-            </button>
-
-            <a href="available-donations.php" class="ngo-btn ngo-btn-outline">
-                Reset
-            </a>
-
-        </form>
-
-        <?php if ($donations->num_rows > 0): ?>
-
-            <div class="ngo-donation-grid">
-
-                <?php while ($food = $donations->fetch_assoc()): ?>
-
-                    <?php
-                    $photo = !empty($food['food_photo'])
-                        ? "../uploads/food/" . htmlspecialchars($food['food_photo'])
-                        : "../assets/images/no-food.png";
-                    ?>
-
-                    <div class="ngo-donation-card">
-
-                        <img
-                            src="<?= $photo ?>"
-                            class="ngo-food-image"
-                            alt="Food">
-
-                        <div class="ngo-card-body">
-
-                            <div class="ngo-card-title-row">
-                                <h3><?= htmlspecialchars($food['food_name']) ?></h3>
-                                <span class="ngo-badge ngo-badge-success">
-                                    Available
-                                </span>
-                            </div>
-
-                            <p>
-                                <?= htmlspecialchars($food['food_category'] ?? 'Food') ?>
-                            </p>
-
-                            <div class="ngo-food-meta">
-                                <span>
-                                    📦 <?= htmlspecialchars($food['quantity']) ?>
-                                    <?= htmlspecialchars($food['unit'] ?? '') ?>
-                                </span>
-
-                                <span>
-                                    📍 <?= htmlspecialchars($food['area'] ?? $food['city'] ?? '') ?>
-                                </span>
-                            </div>
-
-                            <?php if (!empty($food['best_before'])): ?>
-                                <small>
-                                    Best before:
-                                    <?= htmlspecialchars($food['best_before']) ?>
-                                </small>
-                            <?php endif; ?>
-
-                            <a
-                                href="donation-details.php?id=<?= (int)$food['donation_id'] ?>"
-                                class="ngo-btn ngo-btn-primary ngo-btn-full">
-                                View Donation
-                            </a>
-
-                        </div>
-
-                    </div>
-
-                <?php endwhile; ?>
-
-            </div>
-
-        <?php else: ?>
-
-            <div class="ngo-empty">
-                <div>🔎</div>
-                <h3>No donations found</h3>
-                <p>Try another search.</p>
-            </div>
-
-        <?php endif; ?>
-
-    </section>
-
+<div class="toast toast-info mb-2" style="font-size:13px">
+    Showing donations within <strong><?= MATCH_RADIUS_KM ?> KM</strong>.
 </div>
 
-<?php
-$stmt->close();
-ngo_footer();
-?>
+<?php if (!$rows): ?>
+    <div class="empty-state">
+        <div class="empty-icon">🍱</div>
+        <h3>No donations available</h3>
+        <p>Try again later.</p>
+    </div>
+<?php else: ?>
+    <div class="table-card">
+        <table class="table">
+            <thead><tr><th>Food</th><th>Donor</th><th>Location</th><th>Distance</th><th>People</th><th>Urgency</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($rows as $d): ?>
+                <?php
+                    $uCls = in_array($d['urgency'], ['urgent','very_urgent']) ? 'badge-red' : 'badge-yellow';
+                    $uTxt = ucfirst(str_replace('_',' ',$d['urgency']));
+                ?>
+                <tr>
+                    <td class="flex gap-1" style="align-items:center">
+                        <img class="thumb" src="<?= food_photo_url($d['food_photo']) ?>" alt="">
+                        <div>
+                            <strong><?= sanitize($d['food_name']) ?></strong><br>
+                            <small class="text-muted"><?= sanitize($d['food_type']) ?> · <?= (float)$d['quantity'] ?> <?= sanitize($d['unit']) ?></small>
+                        </div>
+                    </td>
+                    <td><?= sanitize($d['donor_name']) ?></td>
+                    <td><?= sanitize($d['area'] ?: $d['city']) ?></td>
+                    <td><?= isset($d['distance_km']) ? number_format($d['distance_km'],1).' KM' : '—' ?></td>
+                    <td><?= (int)$d['people_served'] ?></td>
+                    <td><span class="badge <?= $uCls ?>"><?= $uTxt ?></span></td>
+                    <td><a href="<?= BASE_URL ?>ngo/donation-details.php?id=<?= (int)$d['donation_id'] ?>" class="btn btn-primary btn-sm">View</a></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+<?php endif; ?>
+
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
