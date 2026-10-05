@@ -1,16 +1,20 @@
 <?php
 // recipient/edit-profile.php
-$pageTitle = 'Edit Profile';
-require_once __DIR__ . '/../includes/dashboard-header.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
 
+require_login();
 $uid = current_user_id();
+
 $stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = :u");
 $stmt->execute([':u' => $uid]);
 $u = $stmt->fetch();
+
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
+
     $name    = post('name');
     $phone   = post('phone');
     $address = post('address');
@@ -20,8 +24,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $lat     = post('latitude');
     $lng     = post('longitude');
 
-    if ($name === '') $errors[] = 'Name is required.';
-    if ($city === '') $errors[] = 'City is required.';
+    if ($name === '')  $errors[] = 'Name is required.';
+    if ($city === '')  $errors[] = 'City is required.';
 
     $photoName = $u['profile_photo'];
     if (!empty($_FILES['profile_photo']['name'])) {
@@ -39,11 +43,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':lng' => $lng !== '' ? (float)$lng : null,
                 ':ph' => $photoName, ':u' => $uid,
             ]);
+
         $_SESSION['name'] = $name;
         set_flash('success', 'Profile updated.');
         redirect(BASE_URL . 'recipient/profile.php');
     }
 }
+
+// ---- NOW safe to output HTML ----
+$pageTitle = 'Edit Profile';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 ?>
 
 <?php if ($errors): ?>
@@ -52,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <form method="post" enctype="multipart/form-data" class="card" style="max-width:720px">
     <?= csrf_field() ?>
+
     <div class="form-row">
         <div class="form-group">
             <label class="form-label">Full Name *</label>
