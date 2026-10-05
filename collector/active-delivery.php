@@ -50,9 +50,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cur = $t['status'];
         if (isset($statusFlow[$cur])) {
             $next = $statusFlow[$cur][0];
-            $pdo->prepare("UPDATE collector_tasks SET status=:s, pickup_time = CASE WHEN :s='picked_up' THEN NOW() ELSE pickup_time END WHERE task_id=:t")
-                ->execute([':s' => $next, ':t' => $taskId]);
-
+           if ($next === 'picked_up') {
+    $pdo->prepare("UPDATE collector_tasks SET status = :s, pickup_time = NOW() WHERE task_id = :t")
+        ->execute([':s' => $next, ':t' => $taskId]);
+} else {
+    $pdo->prepare("UPDATE collector_tasks SET status = :s WHERE task_id = :t")
+        ->execute([':s' => $next, ':t' => $taskId]);
+}
             // sync donation status
             $donationStatus = match ($next) {
                 'pickup_started' => 'pickup_scheduled',
