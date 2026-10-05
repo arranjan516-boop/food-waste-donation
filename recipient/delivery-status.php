@@ -1,342 +1,54 @@
 <?php
+// recipient/delivery-status.php
+$pageTitle = 'Delivery Status';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/role-check.php";
+$uid = current_user_id();
 
-require_role("recipient");
-
-
-/*
-|--------------------------------------------------------------------------
-| GET RECIPIENT REQUESTS
-|--------------------------------------------------------------------------
-| We are not using the deliveries table here yet.
-| This avoids depending on a column that does not exist in your database.
-*/
-
-$stmt = $conn->prepare("
-
-    SELECT
-        r.request_id,
-        r.quantity,
-        r.message,
-        r.status AS request_status,
-        r.requested_at,
-
-        d.donation_id,
-        d.food_name,
-        d.unit,
-        d.delivery_preference,
-        d.status AS donation_status,
-        d.city,
-        d.area
-
-    FROM food_requests r
-
-    INNER JOIN food_donations d
-        ON r.donation_id = d.donation_id
-
-    WHERE r.recipient_id = ?
-
-    ORDER BY r.requested_at DESC
-
+$stmt = $pdo->prepare("
+    SELECT fr.*, d.food_name, d.unit, d.city, d.area, u.name AS donor_name,
+           c.name AS collector_name, n.name AS ngo_name
+    FROM food_requests fr
+    JOIN food_donations d ON d.donation_id = fr.donation_id
+    JOIN users u ON u.user_id = d.donor_id
+    LEFT JOIN collector_tasks ct ON ct.request_id = fr.request_id
+    LEFT JOIN users c ON c.user_id = ct.collector_id
+    LEFT JOIN ngo_requests nr ON nr.donation_id = d.donation_id
+    LEFT JOIN users n ON n.user_id = nr.ngo_id
+    WHERE fr.recipient_id = :u
+      AND fr.status IN ('accepted','completed')
+    ORDER BY fr.accepted_at DESC
 ");
-
-
-$stmt->bind_param(
-    "i",
-    $_SESSION["user_id"]
-);
-
-
-$stmt->execute();
-
-$result = $stmt->get_result();
-
-
-$page_title = "Delivery Status";
-
-require_once "../includes/header.php";
-
+$stmt->execute([':u' => $uid]);
+$rows = $stmt->fetchAll();
 ?>
 
-
-<h1>🚚 Delivery Status</h1>
-
-<p>
-    Track the status of your food requests and deliveries.
-</p>
-
-
-<?php if ($result->num_rows > 0): ?>
-
-
-    <div class="grid">
-
-
-        <?php while ($request = $result->fetch_assoc()): ?>
-
-
-            <div class="card">
-
-
-                <!-- FOOD NAME -->
-
-                <h2>
-
-                    <?= e($request["food_name"]) ?>
-
-                </h2>
-
-
-                <!-- QUANTITY -->
-
-                <p>
-
-                    <strong>
-                        Quantity:
-                    </strong>
-
-                    <?= e($request["quantity"]) ?>
-
-                    <?= e($request["unit"]) ?>
-
-                </p>
-
-
-                <!-- LOCATION -->
-
-                <p>
-
-                    <strong>
-                        Location:
-                    </strong>
-
-                    <?= e($request["area"]) ?>,
-
-                    <?= e($request["city"]) ?>
-
-                </p>
-
-
-                <!-- REQUEST STATUS -->
-
-                <p>
-
-                    <strong>
-                        Request Status:
-                    </strong>
-
-                    <span class="status">
-
-                        <?= e(
-                            ucfirst(
-                                $request["request_status"]
-                            )
-                        ) ?>
-
-                    </span>
-
-                </p>
-
-
-                <!-- DELIVERY PREFERENCE -->
-
-                <p>
-
-                    <strong>
-                        Delivery Preference:
-                    </strong>
-
-                    <?= e(
-                        $request["delivery_preference"]
-                    ) ?>
-
-                </p>
-
-
-                <!-- REQUEST DATE -->
-
-                <p>
-
-                    <strong>
-                        Requested On:
-                    </strong>
-
-                    <?= e(
-                        $request["requested_at"]
-                    ) ?>
-
-                </p>
-
-
-                <hr>
-
-
-                <?php if (
-                    $request["request_status"] === "pending"
-                ): ?>
-
-
-                    <div class="alert">
-
-                        ⏳ Your request is waiting
-                        for donor confirmation.
-
-                    </div>
-
-
-                <?php elseif (
-                    $request["request_status"] === "accepted"
-                ): ?>
-
-
-                    <div class="alert success">
-
-                        ✅ Your food request has
-                        been accepted.
-
-                    </div>
-
-
-                    <?php if (
-                        $request["delivery_preference"]
-                        === "self_delivery"
-                    ): ?>
-
-                        <p>
-
-                            🚗 The donor will
-                            deliver the food
-                            directly to you.
-
-                        </p>
-
-
-                    <?php elseif (
-                        $request["delivery_preference"]
-                        === "collector"
-                    ): ?>
-
-                        <p>
-
-                            🚚 A collector will
-                            collect and deliver
-                            the food to you.
-
-                        </p>
-
-
-                    <?php elseif (
-                        $request["delivery_preference"]
-                        === "ngo"
-                    ): ?>
-
-                        <p>
-
-                            🏢 An NGO will
-                            collect and distribute
-                            the food to you.
-
-                        </p>
-
-
-                    <?php else: ?>
-
-                        <p>
-
-                            🚚 Delivery arrangement
-                            is being prepared.
-
-                        </p>
-
-                    <?php endif; ?>
-
-
-                <?php elseif (
-                    $request["request_status"] === "rejected"
-                ): ?>
-
-
-                    <div class="alert">
-
-                        ❌ Your food request
-                        was rejected.
-
-                    </div>
-
-
-                <?php elseif (
-                    $request["request_status"] === "completed"
-                ): ?>
-
-
-                    <div class="alert success">
-
-                        🎉 Food delivery completed.
-
-                    </div>
-
-
-                <?php else: ?>
-
-
-                    <div class="alert">
-
-                        Current status:
-
-                        <?= e(
-                            ucfirst(
-                                $request["request_status"]
-                            )
-                        ) ?>
-
-                    </div>
-
-
-                <?php endif; ?>
-
-
-            </div>
-
-
-        <?php endwhile; ?>
-
-
-    </div>
-
-
-<?php else: ?>
-
-
-    <div class="card">
-
-        <h2>
-            No Food Requests Yet
-        </h2>
-
-        <p>
-            You have not requested any food.
-        </p>
-
-        <br>
-
-        <a
-            href="available-food.php"
-            class="btn"
-        >
-            Find Available Food
-        </a>
-
-    </div>
-
-
-<?php endif; ?>
-
-
-<?php
-
-require_once "../includes/footer.php";
-
-?> 
+<div class="table-card">
+    <div class="table-card-header"><h3>Active &amp; Recent Deliveries</h3></div>
+    <?php if (!$rows): ?>
+        <div style="padding:40px;text-align:center"><p class="text-muted">No active deliveries.</p></div>
+    <?php else: ?>
+        <table class="table">
+            <thead><tr><th>Food</th><th>Donor</th><th>Assigned To</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($rows as $r): ?>
+                <tr>
+                    <td><?= sanitize($r['food_name']) ?></td>
+                    <td><?= sanitize($r['donor_name']) ?></td>
+                    <td>
+                        <?php
+                            if ($r['collector_name']) echo '🚴 ' . sanitize($r['collector_name']);
+                            elseif ($r['ngo_name'])   echo '🏢 ' . sanitize($r['ngo_name']);
+                            else                       echo '🚗 Donor';
+                        ?>
+                    </td>
+                    <td><?= status_badge($r['status']) ?></td>
+                    <td><a href="<?= BASE_URL ?>recipient/request-details.php?id=<?= (int)$r['request_id'] ?>" class="btn btn-outline btn-sm">Open</a></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+</div>
+
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
