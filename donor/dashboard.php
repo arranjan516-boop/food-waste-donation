@@ -14,16 +14,24 @@ $uid = current_user_id();
 // ---- Stat cards ----
 $stats = $pdo->prepare("
     SELECT
-      (SELECT COUNT(*) FROM food_donations WHERE donor_id = :u) AS total_donations,
-      (SELECT COUNT(*) FROM food_donations WHERE donor_id = :u AND status IN ('available','requested','accepted','collector_assigned','ngo_assigned','pickup_scheduled','picked_up','out_for_delivery','awaiting_proof','awaiting_confirmation')) AS active_donations,
-      (SELECT COALESCE(SUM(quantity),0) FROM food_donations WHERE donor_id = :u) AS total_quantity,
-      (SELECT COALESCE(SUM(people_served),0) FROM food_donations WHERE donor_id = :u AND status = 'completed') AS people_served,
-      (SELECT COUNT(*) FROM food_requests fr JOIN food_donations d ON d.donation_id = fr.donation_id WHERE d.donor_id = :u AND fr.status = 'pending') AS pending_requests,
-      (SELECT COUNT(*) FROM food_donations WHERE donor_id = :u AND status = 'completed') AS completed_donations
+      COUNT(*) AS total_donations,
+      SUM(CASE WHEN status IN ('available','requested','accepted','collector_assigned','ngo_assigned','pickup_scheduled','picked_up','out_for_delivery','awaiting_proof','awaiting_confirmation') THEN 1 ELSE 0 END) AS active_donations,
+      COALESCE(SUM(quantity),0) AS total_quantity,
+      COALESCE(SUM(CASE WHEN status='completed' THEN people_served ELSE 0 END),0) AS people_served,
+      SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed_donations
+    FROM food_donations
+    WHERE donor_id = :u
 ");
 $stats->execute([':u' => $uid]);
 $s = $stats->fetch();
 
+$pr = $pdo->prepare("
+    SELECT COUNT(*) FROM food_requests fr
+    JOIN food_donations d ON d.donation_id = fr.donation_id
+    WHERE d.donor_id = :u AND fr.status = 'pending'
+");
+$pr->execute([':u' => $uid]);
+$s['pending_requests'] = (int)$pr->fetchColumn();
 // ---- Recent donations (last 5) ----
 $recent = $pdo->prepare("
     SELECT * FROM food_donations
