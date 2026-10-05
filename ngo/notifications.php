@@ -1,132 +1,64 @@
 <?php
-session_start();
+// ngo/notifications.php
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/notification-functions.php';
+require_login();
+$uid = current_user_id();
 
-require_once "../config/database.php";
-require_once "../includes/ngo-layout.php";
-
-if (!isset($_SESSION['user_id'])) {
-    header("Location: ../login.php");
-    exit;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $action = post('action');
+    if ($action === 'read') {
+        mark_notification_read($pdo, int_post('id'), $uid);
+        set_flash('success', 'Marked as read.');
+        redirect(BASE_URL . 'ngo/notifications.php');
+    }
+    if ($action === 'read_all') {
+        mark_all_notifications_read($pdo, $uid);
+        set_flash('success', 'All marked as read.');
+        redirect(BASE_URL . 'ngo/notifications.php');
+    }
 }
 
-$ngo_id = (int)$_SESSION['user_id'];
-
-/* Mark notification as read */
-if (isset($_GET['read'])) {
-
-    $notification_id = (int)$_GET['read'];
-
-    $stmt = $conn->prepare("
-        UPDATE notifications
-        SET is_read = 1
-        WHERE notification_id = ?
-        AND user_id = ?
-    ");
-
-    $stmt->bind_param(
-        "ii",
-        $notification_id,
-        $ngo_id
-    );
-
-    $stmt->execute();
-    $stmt->close();
-
-    header("Location: notifications.php");
-    exit;
-}
-
-$stmt = $conn->prepare("
-    SELECT
-        notification_id,
-        title,
-        message,
-        notification_type,
-        related_id,
-        is_read,
-        created_at
-    FROM notifications
-    WHERE user_id = ?
-    ORDER BY notification_id DESC
-");
-
-$stmt->bind_param("i", $ngo_id);
-$stmt->execute();
-
-$notifications = $stmt->get_result();
-
-ngo_header("Notifications");
+$pageTitle = 'Notifications';
+require_once __DIR__ . '/../includes/dashboard-header.php';
+$notifs = get_notifications($pdo, $uid, 100);
 ?>
 
-<div class="ngo-content">
-
-    <div class="ngo-page-header">
-
-        <div>
-            <h1>Notifications</h1>
-            <p>Stay updated with donation and delivery activities.</p>
-        </div>
-
-    </div>
-
-    <section class="ngo-section">
-
-        <?php if ($notifications->num_rows > 0): ?>
-
-            <?php while ($notification = $notifications->fetch_assoc()): ?>
-
-                <div class="ngo-notification
-                    <?= $notification['is_read'] ? '' : 'ngo-notification-unread' ?>">
-
-                    <div class="ngo-notification-icon">
-                        🔔
-                    </div>
-
-                    <div class="ngo-notification-content">
-
-                        <h3>
-                            <?= htmlspecialchars($notification['title']) ?>
-                        </h3>
-
-                        <p>
-                            <?= htmlspecialchars($notification['message']) ?>
-                        </p>
-
-                        <small>
-                            <?= htmlspecialchars($notification['created_at']) ?>
-                        </small>
-
-                    </div>
-
-                    <?php if (!$notification['is_read']): ?>
-
-                        <a
-                            href="?read=<?= (int)$notification['notification_id'] ?>"
-                            class="ngo-btn ngo-btn-small">
-                            Mark Read
-                        </a>
-
-                    <?php endif; ?>
-
-                </div>
-
-            <?php endwhile; ?>
-
-        <?php else: ?>
-
-            <div class="ngo-empty">
-                <div>🔔</div>
-                <h3>No notifications</h3>
-                <p>You are all caught up.</p>
-            </div>
-
-        <?php endif; ?>
-
-    </section>
-
+<div class="flex-between mb-2">
+    <h3>Notifications (<?= count($notifs) ?>)</h3>
+    <form method="post">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="read_all">
+        <button class="btn btn-outline btn-sm">Mark all as read</button>
+    </form>
 </div>
 
-<?php
-$stmt->close();
-ngo_footer();
-?>
+<div class="table-card">
+    <?php if (!$notifs): ?>
+        <div style="padding:40px;text-align:center"><p class="text-muted">No notifications yet.</p></div>
+    <?php else: ?>
+        <?php foreach ($notifs as $n): ?>
+            <div style="padding:14px 20px;border-bottom:1px solid var(--gray-100);<?= !$n['is_read']?'background:#FFFDF5;':'' ?>">
+                <div class="flex-between">
+                    <div>
+                        <strong><?= sanitize($n['title']) ?></strong>
+                        <p style="margin:4px 0;color:var(--gray-700)"><?= sanitize($n['message']) ?></p>
+                        <small class="text-muted"><?= time_ago($n['created_at']) ?></small>
+                    </div>
+                    <?php if (!$n['is_read']): ?>
+                        <form method="post">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="read">
+                            <input type="hidden" name="id" value="<?= (int)$n['notification_id'] ?>">
+                            <button class="btn btn-outline btn-sm">Mark read</button>
+                        </form>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+</div>
+
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
