@@ -1,280 +1,123 @@
 <?php
+// collector/edit-profile.php
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
 
-require_once "../config/database.php";
-require_once "../config/constants.php";
-require_once "../includes/functions.php";
-require_once "../includes/role-check.php";
+require_login();
+$uid = current_user_id();
 
-require_role("collector");
+$stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = :u");
+$stmt->execute([':u' => $uid]);
+$u = $stmt->fetch();
+$errors = [];
 
-$user_id = $_SESSION["user_id"];
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $name    = post('name');
+    $phone   = post('phone');
+    $address = post('address');
+    $city    = post('city');
+    $area    = post('area');
+    $pincode = post('pincode');
+    $lat     = post('latitude');
+    $lng     = post('longitude');
 
-$message = "";
-$error = "";
+    if ($name === '') $errors[] = 'Name is required.';
+    if ($city === '') $errors[] = 'City is required.';
 
+    $photoName = $u['profile_photo'];
+    if (!empty($_FILES['profile_photo']['name'])) {
+        $newPhoto = upload_image($_FILES['profile_photo'], PROFILE_UPLOAD, PROFILE_UPLOAD_URL);
+        if ($newPhoto) $photoName = $newPhoto;
+    }
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-
-    $name = trim($_POST["name"] ?? "");
-    $phone = trim($_POST["phone"] ?? "");
-    $address = trim($_POST["address"] ?? "");
-    $city = trim($_POST["city"] ?? "");
-    $area = trim($_POST["area"] ?? "");
-    $pincode = trim($_POST["pincode"] ?? "");
-
-
-    if ($name === "") {
-
-        $error = "Name is required.";
-
-    } else {
-
-        $sql = "
-            UPDATE users
-
-            SET
-                name = ?,
-                phone = ?,
-                address = ?,
-                city = ?,
-                area = ?,
-                pincode = ?
-
-            WHERE user_id = ?
-        ";
-
-        $stmt = $conn->prepare($sql);
-
-        if (!$stmt) {
-
-            $error = "Database error: " . $conn->error;
-
-        } else {
-
-            $stmt->bind_param(
-                "ssssssi",
-                $name,
-                $phone,
-                $address,
-                $city,
-                $area,
-                $pincode,
-                $user_id
-            );
-
-            if ($stmt->execute()) {
-
-                $_SESSION["name"] = $name;
-
-                $message = "Profile updated successfully.";
-
-            } else {
-
-                $error = "Failed to update profile: " . $stmt->error;
-
-            }
-
-            $stmt->close();
-        }
+    if (!$errors) {
+        $pdo->prepare("UPDATE users SET name=:n, phone=:p, address=:a, city=:c, area=:ar,
+                        pincode=:pin, latitude=:lat, longitude=:lng, profile_photo=:ph WHERE user_id=:u")
+            ->execute([
+                ':n' => $name, ':p' => $phone, ':a' => $address,
+                ':c' => $city, ':ar' => $area, ':pin' => $pincode,
+                ':lat' => $lat !== '' ? (float)$lat : null,
+                ':lng' => $lng !== '' ? (float)$lng : null,
+                ':ph' => $photoName, ':u' => $uid,
+            ]);
+        $_SESSION['name'] = $name;
+        set_flash('success', 'Profile updated.');
+        redirect(BASE_URL . 'collector/profile.php');
     }
 }
 
-
-/*
- * Load current profile.
- */
-
-$sql = "
-    SELECT
-        name,
-        email,
-        phone,
-        address,
-        city,
-        area,
-        pincode
-
-    FROM users
-
-    WHERE user_id = ?
-
-    LIMIT 1
-";
-
-$stmt = $conn->prepare($sql);
-
-if (!$stmt) {
-    die("Database error: " . $conn->error);
-}
-
-$stmt->bind_param("i", $user_id);
-
-$stmt->execute();
-
-$result = $stmt->get_result();
-
-$user = $result->fetch_assoc();
-
-$stmt->close();
-
-$page_title = "Edit Profile";
-
-require_once "../includes/header.php";
+$pageTitle = 'Edit Profile';
+require_once __DIR__ . '/../includes/dashboard-header.php';
 ?>
 
-<div class="container">
+<?php if ($errors): ?>
+    <div class="toast toast-error"><?php foreach ($errors as $e): ?><?= sanitize($e) ?><br><?php endforeach; ?></div>
+<?php endif; ?>
 
-    <h1>Edit Profile</h1>
-
-
-    <?php if ($message !== ""): ?>
-
-        <div class="success">
-            <?= htmlspecialchars($message) ?>
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:720px">
+    <?= csrf_field() ?>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">Full Name *</label>
+            <input type="text" name="name" class="form-control" required value="<?= sanitize($u['name']) ?>">
         </div>
-
-    <?php endif; ?>
-
-
-    <?php if ($error !== ""): ?>
-
-        <div class="error">
-            <?= htmlspecialchars($error) ?>
+        <div class="form-group">
+            <label class="form-label">Phone</label>
+            <input type="text" name="phone" class="form-control" value="<?= sanitize($u['phone']) ?>">
         </div>
-
-    <?php endif; ?>
-
-
-    <div class="form-card">
-
-        <form method="POST">
-
-            <label>Name</label>
-
-            <input
-                type="text"
-                name="name"
-                value="<?= htmlspecialchars($user["name"] ?? "") ?>"
-                required
-            >
-
-
-            <label>Email</label>
-
-            <input
-                type="email"
-                value="<?= htmlspecialchars($user["email"] ?? "") ?>"
-                disabled
-            >
-
-
-            <label>Phone</label>
-
-            <input
-                type="text"
-                name="phone"
-                value="<?= htmlspecialchars($user["phone"] ?? "") ?>"
-            >
-
-
-            <label>Address</label>
-
-            <textarea name="address" rows="3"><?= htmlspecialchars($user["address"] ?? "") ?></textarea>
-
-
-            <label>City</label>
-
-            <input
-                type="text"
-                name="city"
-                value="<?= htmlspecialchars($user["city"] ?? "") ?>"
-            >
-
-
-            <label>Area</label>
-
-            <input
-                type="text"
-                name="area"
-                value="<?= htmlspecialchars($user["area"] ?? "") ?>"
-            >
-
-
-            <label>Pincode</label>
-
-            <input
-                type="text"
-                name="pincode"
-                value="<?= htmlspecialchars($user["pincode"] ?? "") ?>"
-            >
-
-
-            <button type="submit">
-                Save Changes
-            </button>
-
-        </form>
-
     </div>
 
-</div>
+    <div class="form-group">
+        <label class="form-label">Address</label>
+        <textarea name="address" class="form-control" rows="2"><?= sanitize($u['address']) ?></textarea>
+    </div>
 
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">City *</label>
+            <input type="text" name="city" class="form-control" required value="<?= sanitize($u['city']) ?>">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Area</label>
+            <input type="text" name="area" class="form-control" value="<?= sanitize($u['area']) ?>">
+        </div>
+    </div>
 
-<style>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label">Pincode</label>
+            <input type="text" name="pincode" class="form-control" value="<?= sanitize($u['pincode']) ?>">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Profile Photo</label>
+            <input type="file" name="profile_photo" class="form-control" accept="image/jpeg,image/png,image/webp">
+        </div>
+    </div>
 
-.container {
-    max-width: 700px;
-    margin: 30px auto;
-    padding: 20px;
+    <input type="hidden" name="latitude"  value="<?= sanitize($u['latitude']) ?>">
+    <input type="hidden" name="longitude" value="<?= sanitize($u['longitude']) ?>">
+
+    <div class="form-group">
+        <button type="button" class="btn btn-outline btn-sm" onclick="detectLocation()">📍 Update GPS location</button>
+        <span id="geo-status" class="text-muted"></span>
+    </div>
+
+    <button class="btn btn-primary">Save Changes</button>
+    <a href="<?= BASE_URL ?>collector/profile.php" class="btn btn-outline">Cancel</a>
+</form>
+
+<script>
+function detectLocation() {
+    if (!navigator.geolocation) return;
+    const s = document.getElementById('geo-status');
+    s.textContent = 'Detecting…';
+    navigator.geolocation.getCurrentPosition(p => {
+        document.querySelector('input[name="latitude"]').value  = p.coords.latitude.toFixed(6);
+        document.querySelector('input[name="longitude"]').value = p.coords.longitude.toFixed(6);
+        s.textContent = '✅ Updated';
+    }, e => s.textContent = '⚠️ ' + e.message);
 }
+</script>
 
-.form-card {
-    padding: 30px;
-    background: white;
-    border-radius: 15px;
-    box-shadow: 0 3px 12px rgba(0,0,0,.08);
-}
-
-label {
-    display: block;
-    margin-top: 15px;
-    margin-bottom: 6px;
-    font-weight: bold;
-}
-
-input,
-textarea {
-    width: 100%;
-    padding: 11px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-}
-
-button {
-    margin-top: 20px;
-    padding: 12px 22px;
-    background: #333;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-}
-
-.success,
-.error {
-    padding: 12px;
-    margin-bottom: 15px;
-    border-radius: 8px;
-}
-
-.success {
-    background: #e8f5e9;
-}
-
-.error {
-    background: #ffebee;
-}
-
-</style>
-
-<?php require_once "../includes/footer.php"; ?>
+<?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
