@@ -54,9 +54,21 @@ $donations = $stmt->fetchAll();
                         <td><?= $d['best_before'] ? date('d M, H:i', strtotime($d['best_before'])) : '—' ?></td>
                         <td><?= status_badge($d['status']) ?></td>
                         <td>
-                            <a href="<?= BASE_URL ?>donor/donation-details.php?id=<?= (int)$d['donation_id'] ?>"
-                               class="btn btn-outline btn-sm">View</a>
-                        </td>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <a href="<?= BASE_URL ?>donor/donation-details.php?id=<?= (int)$d['donation_id'] ?>"
+           class="btn btn-outline btn-sm">View</a>
+
+        <?php if (!in_array($d['status'], ['completed','cancelled','expired'], true)): ?>
+            <form method="post"
+                  action="<?= BASE_URL ?>donor/delete-donation.php?id=<?= (int)$d['donation_id'] ?>"
+                  onsubmit="return confirm('Cancel this donation? Recipients, collectors and NGOs will be notified.');"
+                  style="display:inline">
+                <?= csrf_field() ?>
+                <button class="btn btn-danger btn-sm">Cancel</button>
+            </form>
+        <?php endif; ?>
+    </div>
+</td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
