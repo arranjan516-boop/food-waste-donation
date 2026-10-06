@@ -10,13 +10,13 @@ if (current_role() !== 'ngo' && current_role() !== 'admin') {
     redirect(BASE_URL . 'index.php');
 }
 
-$uid = current_user_id();
+$uid  = current_user_id();
 $nrId = int_get('id');
 
 $stmt = $pdo->prepare("
     SELECT nr.*,
            d.donation_id, d.food_name, d.unit, d.quantity, d.people_served,
-           d.area, d.city, d.status AS donation_status,
+           d.area, d.city, d.status AS donation_status, d.donor_id,
            u.name AS donor_name
     FROM ngo_requests nr
     JOIN food_donations d ON d.donation_id = nr.donation_id
@@ -41,44 +41,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$proof) {
             $errors[] = 'Please upload a distribution proof photo.';
         } else {
-            $req = $pdo->prepare("SELECT request_id, recipient_id FROM food_requests WHERE donation_id = :d AND status IN ('accepted','completed') ORDER BY accepted_at DESC LIMIT 1");
-            $req->execute([':d' => $r['donation_id']]);
-            $reqRow = $req->fetch();
-            $requestId   = $reqRow ? (int)$reqRow['request_id'] : null;
-            $recipientId = $reqRow ? (int)$reqRow['recipient_id'] : null;
+            try {
+                $pdo->beginTransaction();
 
-            $pdo->prepare("
-                INSERT INTO delivery_proofs
-                  (donation_id, request_id, uploaded_by, uploaded_by_role, proof_image, delivery_note)
-                VALUES (:d, :r, :u, 'ngo', :img, :note)
-            ")->execute([
-                ':d' => $r['donation_id'], ':r' => $requestId, ':u' => $uid,
-                ':img' => $proof, ':note' => post('delivery_note'),
-            ]);
+                // 1. Find any accepted request for this donation (for linking)
+                $req = $pdo->prepare("
+                    SELECT request_id, recipient_id
+                    FROM food_requests
+                    WHERE donation_id = :d AND status IN ('accepted','completed')
+                    ORDER BY accepted_at DESC LIMIT 1
+                ");
+                $req->execute([':d' => $r['donation_id']]);
+                $reqRow      = $req->fetch();
+                $requestId   = $reqRow ? (int)$reqRow['request_id'] : null;
+                $recipientId = $reqRow ? (int)$reqRow['recipient_id'] : null;
 
-            $pdo->prepare("UPDATE food_donations SET status='delivered' WHERE donation_id=:d")
-                ->execute([':d' => $r['donation_id']]);
+                // 2. Create a deliveries row FIRST (needed for delivery_id FK)
+                $insDel = $pdo->prepare("
+                    INSERT INTO deliveries (donation_id, request_id, method, ngo_id, status, delivered_at, notes)
+                    VALUES (:d, :r, 'ngo', :n, 'delivered', NOW(), :note)
+                ");
+                $insDel->execute([
+                    ':d'    => $r['donation_id'],
+                    ':r'    => $requestId,
+                    ':n'    => $uid,
+                    ':note' => post('delivery_note'),
+                ]);
+                $deliveryId = (int)$pdo->lastInsertId();
 
-            $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by)
-                           VALUES (:d, 'picked_up', 'delivered', :u)")
-                ->execute([':d' => $r['donation_id'], ':u' => $uid]);
+                // 3. Insert delivery proof linked to that delivery_id
+                $pdo->prepare("
+                    INSERT INTO delivery_proofs
+                      (donation_id, request_id, delivery_id, uploaded_by, uploaded_by_role, proof_image, delivery_note)
+                    VALUES (:d, :r, :del, :u, 'ngo', :img, :note)
+                ")->execute([
+                    ':d'   => $r['donation_id'],
+                    ':r'   => $requestId,
+                    ':del' => $deliveryId,
+                    ':u'   => $uid,
+                    ':img' => $proof,
+                    ':note'=> post('delivery_note'),
+                ]);
 
-            notify($pdo, $r['donor_id'], '✅ Food Distributed',
-                'Your donation "' . $r['food_name'] . '" has been distributed.',
-                'distributed', $r['donation_id']);
+                // 4. Update donation + history
+                $pdo->prepare("UPDATE food_donations SET status='delivered' WHERE donation_id=:d")
+                    ->execute([':d' => $r['donation_id']]);
 
-            if ($recipientId) {
-                notify($pdo, $recipientId, '🍱 Food Delivered',
-                    'Food has been delivered. Please confirm receipt.',
-                    'delivered', $r['donation_id']);
+                $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by)
+                               VALUES (:d, 'picked_up', 'delivered', :u)")
+                    ->execute([':d' => $r['donation_id'], ':u' => $uid]);
+
+                $pdo->commit();
+
+                // 5. Notifications
+                notify($pdo, $r['donor_id'], '✅ Food Distributed',
+                    'Your donation "' . $r['food_name'] . '" has been distributed.',
+                    'distributed', $r['donation_id']);
+
+                if ($recipientId) {
+                    notify($pdo, $recipientId, '🍱 Food Delivered',
+                        'Food has been delivered. Please confirm receipt.',
+                        'delivered', $r['donation_id']);
+                }
+
+                notify_admins($pdo, '📷 NGO Uploaded Proof',
+                    'NGO ' . current_user()['name'] . ' uploaded delivery proof for donation #' . $r['donation_id'],
+                    'proof', $r['donation_id']);
+
+                set_flash('success', 'Distribution recorded.');
+                redirect(BASE_URL . 'ngo/completed-donations.php');
+
+            } catch (Exception $ex) {
+                $pdo->rollBack();
+                $errors[] = 'Error: ' . $ex->getMessage();
             }
-
-            notify_admins($pdo, '📷 NGO Uploaded Proof',
-                'NGO ' . current_user()['name'] . ' uploaded delivery proof for donation #' . $r['donation_id'],
-                'proof', $r['donation_id']);
-
-            set_flash('success', 'Distribution recorded.');
-            redirect(BASE_URL . 'ngo/completed-donations.php');
         }
     }
 }
@@ -97,7 +133,7 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
         <?= status_badge($r['donation_status']) ?>
     </div>
     <p class="text-muted">From <?= sanitize($r['donor_name']) ?> · <?= sanitize($r['area'] ?: $r['city']) ?></p>
-    <p><strong>Quantity:</strong> <?= (float)$r['quantity'] ?> <?= sanitize($r['unit']) ?></p>
+    <p><strong>Quantity:</strong> <?= (float)$r['quantity'] ?> <?= sanitize($r['unit'] ?: 'units') ?></p>
     <p><strong>People served:</strong> <?= (int)$r['people_served'] ?></p>
 </div>
 
