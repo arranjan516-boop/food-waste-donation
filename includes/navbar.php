@@ -17,6 +17,7 @@ if (!isset($__bellCount)) $__bellCount = is_logged_in() ? unread_count($pdo, cur
             <li><a href="<?= BASE_URL ?>index.php"          class="<?= $__current==='index.php'?'active':'' ?>">Home</a></li>
             <li><a href="<?= BASE_URL ?>about.php"          class="<?= $__current==='about.php'?'active':'' ?>">About</a></li>
             <li><a href="<?= BASE_URL ?>how-it-works.php"   class="<?= $__current==='how-it-works.php'?'active':'' ?>">How It Works</a></li>
+            <li><a href="<?= BASE_URL ?>impact.php" class="<?= $__current==='impact.php'?'active':'' ?>">Impact</a></li>
             <li><a href="<?= BASE_URL ?>available-food.php" class="<?= $__current==='available-food.php'?'active':'' ?>">Available Food</a></li>
             <li><a href="<?= BASE_URL ?>register.php?role=donor"     class="<?= $__current==='register.php'?'active':'' ?>">Become a Donor</a></li>
             <li><a href="<?= BASE_URL ?>register.php?role=collector" class="<?= $__current==='register.php'?'active':'' ?>">Become a Collector</a></li>
