@@ -14,9 +14,10 @@ $uid = current_user_id();
 $nrId = int_get('id');
 
 $stmt = $pdo->prepare("
-    SELECT nr.*, d.donation_id, d.food_name, d.food_photo, d.unit, d.quantity, d.people_served,
+        SELECT nr.*, d.donation_id, d.food_name, d.food_photo, d.unit, d.quantity, d.people_served,
            d.address AS pickup_address, d.area AS pickup_area, d.city AS pickup_city,
-           d.best_before, u.name AS donor_name, u.phone AS donor_phone
+           d.best_before, d.status AS donation_status,
+           u.name AS donor_name, u.phone AS donor_phone
     FROM ngo_requests nr
     JOIN food_donations d ON d.donation_id = nr.donation_id
     JOIN users u ON u.user_id = d.donor_id
