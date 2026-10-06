@@ -63,7 +63,7 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
 <div class="card mb-3">
     <div class="flex-between mb-2">
         <h2><?= sanitize($r['food_name']) ?></h2>
-        <?= status_badge($r['status']) ?>
+<?= status_badge($r['donation_status']) ?>
     </div>
 
     <div class="details-grid">
