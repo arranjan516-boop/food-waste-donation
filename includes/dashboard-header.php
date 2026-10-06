@@ -82,6 +82,11 @@ $__menus = [
 
 $__menu = $__menus[$__role] ?? [];
 $__initial = strtoupper(substr($__user['name'] ?: 'U', 0, 1));
+
+// Fetch profile photo for topbar avatar
+$__avatarStmt = $pdo->prepare("SELECT profile_photo FROM users WHERE user_id = :u");
+$__avatarStmt->execute([':u' => current_user_id()]);
+$__avatarPhoto = $__avatarStmt->fetchColumn() ?: null;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -134,9 +139,15 @@ $__initial = strtoupper(substr($__user['name'] ?: 'U', 0, 1));
                     <?php endif; ?>
                 </a>
                 <div class="user-chip">
-                    <div class="avatar"><?= $__initial ?></div>
-                    <span><?= sanitize($__user['name']) ?></span>
-                </div>
+    <div class="avatar">
+        <?php if ($__avatarPhoto): ?>
+            <img src="<?= PROFILE_UPLOAD_URL . rawurlencode($__avatarPhoto) ?>" alt="">
+        <?php else: ?>
+            <?= $__initial ?>
+        <?php endif; ?>
+    </div>
+    <span><?= sanitize($__user['name']) ?></span>
+</div>
             </div>
         </div>
 
