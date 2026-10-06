@@ -47,3 +47,15 @@ function showToast(message, type = 'info') {
     document.body.appendChild(div);
     setTimeout(() => div.remove(), 4000);
 }
+/* ---- Show/hide password toggle ---- */
+function togglePassword(btn) {
+    var input = btn.parentElement.querySelector('input');
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🙈';
+    } else {
+        input.type = 'password';
+        btn.textContent = '👁';
+    }
+}
