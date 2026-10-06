@@ -8,7 +8,6 @@ if (!isset($__bellCount)) $__bellCount = is_logged_in() ? unread_count($pdo, cur
     <div class="container">
         <a class="brand" href="<?= BASE_URL ?>index.php">
             <img src="<?= BASE_URL ?>assets/images/logo.png" alt="FoodShare">
-            <span><?= SITE_NAME ?></span>
         </a>
 
         <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')">☰</button>
