@@ -68,10 +68,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            value="<?= sanitize($email) ?>" autofocus>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Password</label>
-                    <input type="password" name="password" class="form-control" required>
-                </div>
+               <div class="form-group">
+    <label class="form-label">Password</label>
+    <div class="password-wrap">
+        <input type="password" name="password" class="form-control" required>
+        <button type="button" class="password-toggle" onclick="togglePassword(this)" aria-label="Show password">👁</button>
+    </div>
+</div>
 
                 <div class="flex-between mb-2">
                     <label style="font-size:13px">
