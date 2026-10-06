@@ -24,6 +24,7 @@ $__bellCount = is_logged_in() ? unread_count($pdo, current_user_id()) : 0;
     <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/style.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/auth.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/food.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/impact.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/responsive.css">
     <?php if (!empty($extraCss)) foreach ((array)$extraCss as $c): ?>
         <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/<?= sanitize($c) ?>">
