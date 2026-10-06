@@ -144,18 +144,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Full Name *</label>
-                        <input type="text" name="name" class="form-control" required
-                               value="<?= sanitize($old['name']) ?>">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Phone</label>
-                        <input type="tel" name="phone" class="form-control"
-                               value="<?= sanitize($old['phone']) ?>">
-                    </div>
-                </div>
+               <div class="form-row">
+    <div class="form-group">
+        <label class="form-label">Password *</label>
+        <div class="password-wrap">
+            <input type="password" name="password" id="password" class="form-control"
+                   minlength="6" required>
+            <button type="button" class="password-toggle" onclick="togglePassword(this)" aria-label="Show password">👁</button>
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Confirm Password *</label>
+        <div class="password-wrap">
+            <input type="password" name="confirm_password" id="confirm_password"
+                   class="form-control" minlength="6" required>
+            <button type="button" class="password-toggle" onclick="togglePassword(this)" aria-label="Show password">👁</button>
+        </div>
+    </div>
+</div>
 
                 <div class="form-group">
                     <label class="form-label">Email Address *</label>
