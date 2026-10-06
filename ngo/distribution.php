@@ -14,7 +14,9 @@ $uid = current_user_id();
 $nrId = int_get('id');
 
 $stmt = $pdo->prepare("
-    SELECT nr.*, d.donation_id, d.food_name, d.unit, d.people_served, d.area, d.city,
+    SELECT nr.*,
+           d.donation_id, d.food_name, d.unit, d.quantity, d.people_served,
+           d.area, d.city, d.status AS donation_status,
            u.name AS donor_name
     FROM ngo_requests nr
     JOIN food_donations d ON d.donation_id = nr.donation_id
@@ -39,11 +41,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$proof) {
             $errors[] = 'Please upload a distribution proof photo.';
         } else {
-            // Look for an accepted request on this donation (if any)
             $req = $pdo->prepare("SELECT request_id, recipient_id FROM food_requests WHERE donation_id = :d AND status IN ('accepted','completed') ORDER BY accepted_at DESC LIMIT 1");
             $req->execute([':d' => $r['donation_id']]);
             $reqRow = $req->fetch();
-            $requestId = $reqRow ? (int)$reqRow['request_id'] : null;
+            $requestId   = $reqRow ? (int)$reqRow['request_id'] : null;
             $recipientId = $reqRow ? (int)$reqRow['recipient_id'] : null;
 
             $pdo->prepare("
@@ -91,7 +92,10 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
 <?php endif; ?>
 
 <div class="card mb-3">
-    <h2><?= sanitize($r['food_name']) ?></h2>
+    <div class="flex-between mb-2">
+        <h2><?= sanitize($r['food_name']) ?></h2>
+        <?= status_badge($r['donation_status']) ?>
+    </div>
     <p class="text-muted">From <?= sanitize($r['donor_name']) ?> · <?= sanitize($r['area'] ?: $r['city']) ?></p>
     <p><strong>Quantity:</strong> <?= (float)$r['quantity'] ?> <?= sanitize($r['unit']) ?></p>
     <p><strong>People served:</strong> <?= (int)$r['people_served'] ?></p>
