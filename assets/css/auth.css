@@ -84,3 +84,31 @@
     .auth-form-wrap { padding: 26px 22px; }
     .auth-side { display: none; }
 }
+/* ---- Password show/hide toggle ---- */
+.password-wrap {
+    position: relative;
+    display: block;
+}
+.password-wrap .form-control {
+    padding-right: 42px;
+}
+.password-toggle {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 17px;
+    line-height: 1;
+    color: #6B7280;
+    padding: 4px;
+    opacity: .75;
+    transition: opacity .15s;
+    user-select: none;
+}
+.password-toggle:hover {
+    opacity: 1;
+    color: #1B5E20;
+}
