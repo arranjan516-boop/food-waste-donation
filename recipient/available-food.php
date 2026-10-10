@@ -28,7 +28,9 @@ $params = [];
 if ($cat)    { $sql .= " AND d.food_category = :cat";  $params[':cat'] = $cat; }
 if ($type)   { $sql .= " AND d.food_type = :type";     $params[':type'] = $type; }
 if ($urg)    { $sql .= " AND d.urgency = :urg";        $params[':urg'] = $urg; }
-if ($search) { $sql .= " AND (d.food_name LIKE :q OR d.description LIKE :q)"; $params[':q'] = "%$search%"; }
+if ($search) { $sql .= " AND (d.food_name LIKE :q1 OR d.description LIKE :q2)";
+               $params[':q1'] = "%$search%";
+               $params[':q2'] = "%$search%"; }
 $sql .= " ORDER BY d.created_at DESC LIMIT 80";
 
 $stmt = $pdo->prepare($sql);
