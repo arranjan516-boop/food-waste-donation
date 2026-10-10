@@ -36,14 +36,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $rows = $pdo->prepare("
     SELECT nr.donation_id, d.food_name, d.food_photo, d.updated_at,
            d.donor_id, du.name AS donor_name,
-           (SELECT COUNT(*) FROM feedback f WHERE f.donation_id = d.donation_id AND f.from_user = :u) AS given
+           (SELECT COUNT(*) FROM feedback f WHERE f.donation_id = d.donation_id AND f.from_user = :u1) AS given
     FROM ngo_requests nr
     JOIN food_donations d ON d.donation_id = nr.donation_id
     JOIN users du ON du.user_id = d.donor_id
-    WHERE nr.ngo_id = :u AND d.status IN ('delivered','completed')
+    WHERE nr.ngo_id = :u2 AND d.status IN ('delivered','completed')
     ORDER BY d.updated_at DESC
 ");
-$rows->execute([':u' => $uid]);
+$rows->execute([':u1' => $uid, ':u2' => $uid]);
 $rows = $rows->fetchAll();
 
 $pageTitle = 'Feedback';
