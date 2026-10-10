@@ -2,6 +2,7 @@
 // register.php
 $pageTitle = 'Register';
 require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/location-picker.php';
 
 // Pre-select role from ?role=
 $preselect = get('role');
