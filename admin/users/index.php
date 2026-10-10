@@ -11,7 +11,12 @@ $search = get('q');
 $sql = "SELECT * FROM users WHERE 1=1";
 $params = [];
 if ($role)   { $sql .= " AND role = :r"; $params[':r'] = $role; }
-if ($search) { $sql .= " AND (name LIKE :q OR email LIKE :q OR phone LIKE :q)"; $params[':q'] = "%$search%"; }
+if ($search) {
+    $sql .= " AND (name LIKE :q1 OR email LIKE :q2 OR phone LIKE :q3)";
+    $params[':q1'] = "%$search%";
+    $params[':q2'] = "%$search%";
+    $params[':q3'] = "%$search%";
+}
 $sql .= " ORDER BY created_at DESC LIMIT 200";
 
 $stmt = $pdo->prepare($sql);
