@@ -168,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
-}
+
 
 $pageTitle = 'Active Delivery';
 require_once __DIR__ . '/../includes/dashboard-header.php';
