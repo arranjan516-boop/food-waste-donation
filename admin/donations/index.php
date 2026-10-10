@@ -14,7 +14,11 @@ $sql = "SELECT d.*, u.name AS donor_name
         WHERE 1=1";
 $params = [];
 if ($status) { $sql .= " AND d.status = :s"; $params[':s'] = $status; }
-if ($search) { $sql .= " AND (d.food_name LIKE :q OR u.name LIKE :q)"; $params[':q'] = "%$search%"; }
+if ($search) {
+    $sql .= " AND (d.food_name LIKE :q1 OR u.name LIKE :q2)";
+    $params[':q1'] = "%$search%";
+    $params[':q2'] = "%$search%";
+}
 $sql .= " ORDER BY d.created_at DESC LIMIT 200";
 
 $stmt = $pdo->prepare($sql);
