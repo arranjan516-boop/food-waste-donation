@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ---- Upload delivery proof ----
-    if ($action === 'upload_proof') {
+       if ($action === 'upload_proof') {
         if ($t['status'] !== 'awaiting_proof' && $t['status'] !== 'delivering') {
             $errors[] = 'You cannot upload proof at this stage.';
         } else {
@@ -98,47 +98,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$proof) {
                 $errors[] = 'Please upload a valid delivery proof photo.';
             } else {
-                $pdo->prepare("
-                    INSERT INTO delivery_proofs
-                      (donation_id, request_id, uploaded_by, uploaded_by_role, proof_image, delivery_note)
-                    VALUES (:d, :r, :u, 'collector', :img, :note)
-                ")->execute([
-                    ':d' => $t['donation_id'],
-                    ':r' => $t['request_id'],
-                    ':u' => $uid,
-                    ':img' => $proof,
-                    ':note' => post('delivery_note'),
-                ]);
+                try {
+                    $pdo->beginTransaction();
 
-                // Update collector task
-                $pdo->prepare("UPDATE collector_tasks SET status='delivered', delivery_time=NOW() WHERE task_id=:t")
-                    ->execute([':t' => $taskId]);
+                    // 1. Create a deliveries row FIRST (needed for delivery_id FK)
+                    $insDel = $pdo->prepare("
+                        INSERT INTO deliveries (donation_id, request_id, method, collector_id, status, delivered_at, notes)
+                        VALUES (:d, :r, 'collector', :c, 'delivered', NOW(), :note)
+                    ");
+                    $insDel->execute([
+                        ':d'    => $t['donation_id'],
+                        ':r'    => $t['request_id'],
+                        ':c'    => $uid,
+                        ':note' => post('delivery_note'),
+                    ]);
+                    $deliveryId = (int)$pdo->lastInsertId();
 
-                // Update donation
-                $pdo->prepare("UPDATE food_donations SET status='delivered' WHERE donation_id=:d")
-                    ->execute([':d' => $t['donation_id']]);
+                    // 2. Insert delivery proof linked to that delivery_id
+                    $pdo->prepare("
+                        INSERT INTO delivery_proofs
+                          (donation_id, request_id, delivery_id, uploaded_by, uploaded_by_role, proof_image, delivery_note)
+                        VALUES (:d, :r, :del, :u, 'collector', :img, :note)
+                    ")->execute([
+                        ':d'    => $t['donation_id'],
+                        ':r'    => $t['request_id'],
+                        ':del'  => $deliveryId,
+                        ':u'    => $uid,
+                        ':img'  => $proof,
+                        ':note' => post('delivery_note'),
+                    ]);
 
-                $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by)
-                               VALUES (:d, :old, 'delivered', :u)")
-                    ->execute([':d' => $t['donation_id'], ':old' => $t['status'], ':u' => $uid]);
+                    // 3. Update collector task
+                    $pdo->prepare("UPDATE collector_tasks SET status='delivered', delivery_time=NOW() WHERE task_id=:t")
+                        ->execute([':t' => $taskId]);
 
-                // Notifications
-                notify($pdo, $t['donor_id'], '✅ Food Delivered',
-                    'Your donated food has been delivered successfully. Delivery proof uploaded.',
-                    'delivered', $t['donation_id']);
+                    // 4. Update donation
+                    $pdo->prepare("UPDATE food_donations SET status='delivered' WHERE donation_id=:d")
+                        ->execute([':d' => $t['donation_id']]);
 
-                if ($t['recipient_id']) {
-                    notify($pdo, $t['recipient_id'], '🍱 Food Delivered',
-                        'Your food has been delivered. Delivery proof is available. Please confirm receipt.',
+                    // 5. History
+                    $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by)
+                                   VALUES (:d, :old, 'delivered', :u)")
+                        ->execute([':d' => $t['donation_id'], ':old' => $t['status'], ':u' => $uid]);
+
+                    $pdo->commit();
+
+                    // Notifications
+                    notify($pdo, $t['donor_id'], '✅ Food Delivered',
+                        'Your donated food has been delivered successfully. Delivery proof uploaded.',
                         'delivered', $t['donation_id']);
+
+                    if (!empty($t['recipient_id'])) {
+                        notify($pdo, $t['recipient_id'], '🍱 Food Delivered',
+                            'Your food has been delivered. Delivery proof is available. Please confirm receipt.',
+                            'delivered', $t['donation_id']);
+                    }
+
+                    notify_admins($pdo, '📷 Delivery Proof Uploaded',
+                        'Collector uploaded proof for donation #' . $t['donation_id'],
+                        'proof', $t['donation_id']);
+
+                    set_flash('success', 'Delivery proof submitted!');
+                    redirect(BASE_URL . 'collector/completed-tasks.php');
+
+                } catch (Exception $ex) {
+                    $pdo->rollBack();
+                    $errors[] = 'Upload failed: ' . $ex->getMessage();
                 }
-
-                notify_admins($pdo, '📷 Delivery Proof Uploaded',
-                    'Collector uploaded proof for donation #' . $t['donation_id'],
-                    'proof', $t['donation_id']);
-
-                set_flash('success', 'Delivery proof submitted!');
-                redirect(BASE_URL . 'collector/completed-tasks.php');
             }
         }
     }
