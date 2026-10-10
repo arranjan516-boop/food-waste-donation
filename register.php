@@ -4,13 +4,12 @@ $pageTitle = 'Register';
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/location-picker.php';
 
-// Pre-select role from ?role=
 $preselect = get('role');
 $validRoles = ['recipient','donor','collector','ngo'];
 if (!in_array($preselect, $validRoles, true)) $preselect = 'recipient';
 
 $errors = [];
-$old    = [
+$old = [
     'name' => '', 'email' => '', 'phone' => '',
     'role' => $preselect,
     'address' => '', 'city' => '', 'area' => '', 'pincode' => '',
@@ -34,7 +33,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password        = post('password');
     $confirmPassword = post('confirm_password');
 
-    // ---- Validation ----
     if ($old['name'] === '')  $errors[] = 'Name is required.';
     if (!filter_var($old['email'], FILTER_VALIDATE_EMAIL)) $errors[] = 'Valid email is required.';
     if (strlen($password) < 6) $errors[] = 'Password must be at least 6 characters.';
@@ -43,24 +41,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($old['city'] === '')    $errors[] = 'City is required for 15 KM matching.';
     if ($old['pincode'] === '') $errors[] = 'Pincode is required.';
 
-    // ---- Duplicate email check ----
     if (!$errors) {
         $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = :e");
         $stmt->execute([':e' => $old['email']]);
         if ($stmt->fetch()) $errors[] = 'This email is already registered.';
     }
 
-    // ---- Profile photo (optional) ----
     $photoName = null;
     if (!$errors && !empty($_FILES['profile_photo']['name'])) {
         $photoName = upload_image($_FILES['profile_photo'], PROFILE_UPLOAD, PROFILE_UPLOAD_URL);
     }
 
-    // ---- Insert ----
     if (!$errors) {
         $hash = password_hash($password, PASSWORD_DEFAULT);
-
-        // Try to get lat/lng from pincode if user didn't provide
         $lat = $old['latitude']  !== '' ? (float)$old['latitude']  : null;
         $lng = $old['longitude'] !== '' ? (float)$old['longitude'] : null;
 
@@ -88,7 +81,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $newUserId = (int)$pdo->lastInsertId();
 
-        // Notify admins
         require_once __DIR__ . '/includes/notification-functions.php';
         notify_admins($pdo, 'New ' . ucfirst($old['role']) . ' registered',
             $old['name'] . ' (' . $old['email'] . ') joined as ' . $old['role'] . '.',
@@ -102,7 +94,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <section class="auth-section">
     <div class="auth-container">
-        <!-- Left: Form -->
         <div class="auth-form-wrap">
             <h1>Create Your Account</h1>
             <p class="text-muted mb-3">Join our food donation community.</p>
@@ -145,24 +136,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
 
-               <div class="form-row">
-    <div class="form-group">
-        <label class="form-label">Password *</label>
-        <div class="password-wrap">
-            <input type="password" name="password" id="password" class="form-control"
-                   minlength="6" required>
-            <button type="button" class="password-toggle" onclick="togglePassword(this)" aria-label="Show password">👁</button>
-        </div>
-    </div>
-    <div class="form-group">
-        <label class="form-label">Confirm Password *</label>
-        <div class="password-wrap">
-            <input type="password" name="confirm_password" id="confirm_password"
-                   class="form-control" minlength="6" required>
-            <button type="button" class="password-toggle" onclick="togglePassword(this)" aria-label="Show password">👁</button>
-        </div>
-    </div>
-</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Full Name *</label>
+                        <input type="text" name="name" class="form-control" required
+                               value="<?= sanitize($old['name']) ?>">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Phone</label>
+                        <input type="tel" name="phone" class="form-control"
+                               value="<?= sanitize($old['phone']) ?>">
+                    </div>
+                </div>
 
                 <div class="form-group">
                     <label class="form-label">Email Address *</label>
@@ -173,13 +158,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Password *</label>
-                        <input type="password" name="password" id="password" class="form-control"
-                               minlength="6" required>
+                        <div class="password-wrap">
+                            <input type="password" name="password" id="password" class="form-control"
+                                   minlength="6" required>
+                            <button type="button" class="password-toggle" onclick="togglePassword(this)" aria-label="Show password">👁</button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Confirm Password *</label>
-                        <input type="password" name="confirm_password" id="confirm_password"
-                               class="form-control" minlength="6" required>
+                        <div class="password-wrap">
+                            <input type="password" name="confirm_password" id="confirm_password"
+                                   class="form-control" minlength="6" required>
+                            <button type="button" class="password-toggle" onclick="togglePassword(this)" aria-label="Show password">👁</button>
+                        </div>
                     </div>
                 </div>
 
@@ -189,18 +180,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="form-group">
                     <label class="form-label">Address</label>
-                    <textarea name="address" class="form-control" rows="2"><?= sanitize($old['address']) ?></textarea>
+                    <textarea name="address" id="address" class="form-control" rows="2"><?= sanitize($old['address']) ?></textarea>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">City *</label>
-                        <input type="text" name="city" class="form-control" required
+                        <input type="text" name="city" id="city" class="form-control" required
                                value="<?= sanitize($old['city']) ?>" placeholder="e.g. Tumkur">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Area</label>
-                        <input type="text" name="area" class="form-control"
+                        <input type="text" name="area" id="area" class="form-control"
                                value="<?= sanitize($old['area']) ?>" placeholder="e.g. Kyathsandra">
                     </div>
                 </div>
@@ -208,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">Pincode *</label>
-                        <input type="text" name="pincode" class="form-control" required
+                        <input type="text" name="pincode" id="pincode" class="form-control" required
                                value="<?= sanitize($old['pincode']) ?>" maxlength="10">
                     </div>
                     <div class="form-group">
@@ -223,15 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <img id="preview-photo" style="display:none;max-width:120px;border-radius:10px;margin-top:8px">
                 </div>
 
-                <input type="hidden" name="latitude"  value="<?= sanitize($old['latitude']) ?>">
-                <input type="hidden" name="longitude" value="<?= sanitize($old['longitude']) ?>">
-
-                <div class="form-group">
-                    <button type="button" class="btn btn-outline btn-sm" onclick="detectLocation()">
-                        📍 Use my current location (GPS)
-                    </button>
-                    <span id="geo-status" class="text-muted" style="margin-left:8px"></span>
-                </div>
+                <?php render_location_picker($old); ?>
 
                 <button class="btn btn-primary btn-block btn-lg">Register</button>
 
@@ -241,7 +224,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
         </div>
 
-        <!-- Right: Illustration -->
         <div class="auth-side">
             <img src="<?= BASE_URL ?>assets/images/about-food.jpg" alt="Together we reduce food waste">
             <h2>Together we can reduce food waste.</h2>
@@ -253,25 +235,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 </section>
-
-<script>
-function detectLocation() {
-    const status = document.getElementById('geo-status');
-    if (!navigator.geolocation) {
-        status.textContent = 'Geolocation not supported.';
-        return;
-    }
-    status.textContent = 'Detecting…';
-    navigator.geolocation.getCurrentPosition(
-        pos => {
-            document.querySelector('input[name="latitude"]').value  = pos.coords.latitude.toFixed(6);
-            document.querySelector('input[name="longitude"]').value = pos.coords.longitude.toFixed(6);
-            status.textContent = '✅ Location captured';
-        },
-        err => { status.textContent = '⚠️ ' + err.message; },
-        { enableHighAccuracy: true, timeout: 8000 }
-    );
-}
-</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
