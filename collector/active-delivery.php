@@ -10,11 +10,12 @@ if (current_role() !== 'collector' && current_role() !== 'admin') {
     redirect(BASE_URL . 'index.php');
 }
 
-$uid   = current_user_id();
+$uid    = current_user_id();
 $taskId = int_get('id');
 
 $stmt = $pdo->prepare("
-    SELECT ct.*, d.donation_id, d.food_name, d.food_photo, d.unit, d.quantity, d.people_served,
+    SELECT ct.*,
+           d.donation_id, d.donor_id, d.food_name, d.food_photo, d.unit, d.quantity, d.people_served,
            d.address AS pickup_address, d.area AS pickup_area, d.city AS pickup_city,
            d.best_before, d.urgency,
            u.name AS donor_name, u.phone AS donor_phone,
@@ -50,14 +51,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cur = $t['status'];
         if (isset($statusFlow[$cur])) {
             $next = $statusFlow[$cur][0];
-           if ($next === 'picked_up') {
-    $pdo->prepare("UPDATE collector_tasks SET status = :s, pickup_time = NOW() WHERE task_id = :t")
-        ->execute([':s' => $next, ':t' => $taskId]);
-} else {
-    $pdo->prepare("UPDATE collector_tasks SET status = :s WHERE task_id = :t")
-        ->execute([':s' => $next, ':t' => $taskId]);
-}
-            // sync donation status
+
+            if ($next === 'picked_up') {
+                $pdo->prepare("UPDATE collector_tasks SET status = :s, pickup_time = NOW() WHERE task_id = :t")
+                    ->execute([':s' => $next, ':t' => $taskId]);
+            } else {
+                $pdo->prepare("UPDATE collector_tasks SET status = :s WHERE task_id = :t")
+                    ->execute([':s' => $next, ':t' => $taskId]);
+            }
+
             $donationStatus = match ($next) {
                 'pickup_started' => 'pickup_scheduled',
                 'picked_up'      => 'picked_up',
@@ -70,13 +72,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ->execute([':s' => $donationStatus, ':d' => $t['donation_id']]);
             }
 
-            // history
             $pdo->prepare("INSERT INTO donation_history (donation_id, old_status, new_status, changed_by)
                            VALUES (:d, :old, :new, :u)")
                 ->execute([':d' => $t['donation_id'], ':old' => $t['status'], ':new' => $next, ':u' => $uid]);
 
-            // notify recipient on pickup
-            if ($next === 'picked_up' && $t['recipient_id']) {
+            if ($next === 'picked_up' && !empty($t['recipient_id'])) {
                 notify($pdo, $t['recipient_id'], '🍱 Food Collected',
                     'Your food has been collected and is on the way.', 'delivery', $t['donation_id']);
             }
@@ -87,8 +87,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ---- Upload delivery proof ----
-       if ($action === 'upload_proof') {
-        if ($t['status'] !== 'awaiting_proof' && $t['status'] !== 'delivering') {
+    if ($action === 'upload_proof') {
+        if (!in_array($t['status'], ['awaiting_proof','delivering'], true)) {
             $errors[] = 'You cannot upload proof at this stage.';
         } else {
             $proof = null;
@@ -98,10 +98,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$proof) {
                 $errors[] = 'Please upload a valid delivery proof photo.';
             } else {
+                $pdo->beginTransaction();
                 try {
-                    $pdo->beginTransaction();
-
-                    // 1. Create a deliveries row FIRST (needed for delivery_id FK)
+                    // 1. Create the deliveries row first (required by FK on delivery_proofs.delivery_id)
                     $insDel = $pdo->prepare("
                         INSERT INTO deliveries (donation_id, request_id, method, collector_id, status, delivered_at, notes)
                         VALUES (:d, :r, 'collector', :c, 'delivered', NOW(), :note)
@@ -162,7 +161,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     redirect(BASE_URL . 'collector/completed-tasks.php');
 
                 } catch (Exception $ex) {
-                    $pdo->rollBack();
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
                     $errors[] = 'Upload failed: ' . $ex->getMessage();
                 }
             }
@@ -194,9 +195,9 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
 
             <h4 style="margin:16px 0 8px">🏁 Deliver To</h4>
             <p><strong><?= sanitize($t['recipient_name'] ?: 'Recipient') ?></strong></p>
-            <?php if ($t['recipient_address']): ?>
+            <?php if (!empty($t['recipient_address'])): ?>
                 <p><?= sanitize($t['recipient_address']) ?></p>
-            <?php elseif ($t['recipient_city']): ?>
+            <?php elseif (!empty($t['recipient_city'])): ?>
                 <p><?= sanitize($t['recipient_area'] ?: '') ?> <?= sanitize($t['recipient_city']) ?></p>
             <?php endif; ?>
             <p><strong>Phone:</strong> <?= sanitize($t['recipient_phone'] ?: '—') ?></p>
@@ -217,7 +218,7 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
     </div>
 <?php endif; ?>
 
-<?php if (in_array($t['status'], ['delivering','awaiting_proof'])): ?>
+<?php if (in_array($t['status'], ['delivering','awaiting_proof'], true)): ?>
     <div class="card">
         <h3 class="card-title">📷 Upload Delivery Proof</h3>
         <p class="text-muted mb-2">Mandatory — take a photo of the food being handed over.</p>
