@@ -36,14 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     redirect(BASE_URL . 'donor/feedback.php');
 }
-
 // Completed donations with recipient + collector/NGO recipients to rate
 $rows = $pdo->prepare("
     SELECT d.donation_id, d.food_name, d.food_photo, d.updated_at,
            fr.recipient_id, ru.name AS recipient_name,
            ct.collector_id, cu.name AS collector_name,
            nr.ngo_id, nu.name AS ngo_name,
-           (SELECT COUNT(*) FROM feedback f WHERE f.donation_id = d.donation_id AND f.from_user = :u) AS given
+           (SELECT COUNT(*) FROM feedback f WHERE f.donation_id = d.donation_id AND f.from_user = :u1) AS given
     FROM food_donations d
     LEFT JOIN food_requests fr ON fr.donation_id = d.donation_id AND fr.status = 'completed'
     LEFT JOIN users ru ON ru.user_id = fr.recipient_id
@@ -51,11 +50,11 @@ $rows = $pdo->prepare("
     LEFT JOIN users cu ON cu.user_id = ct.collector_id
     LEFT JOIN ngo_requests nr ON nr.donation_id = d.donation_id AND nr.status = 'completed'
     LEFT JOIN users nu ON nu.user_id = nr.ngo_id
-    WHERE d.donor_id = :u AND d.status = 'completed'
+    WHERE d.donor_id = :u2 AND d.status = 'completed'
     ORDER BY d.updated_at DESC
     LIMIT 100
 ");
-$rows->execute([':u' => $uid]);
+$rows->execute([':u1' => $uid, ':u2' => $uid]);
 $rows = $rows->fetchAll();
 
 $pageTitle = 'Feedback';
