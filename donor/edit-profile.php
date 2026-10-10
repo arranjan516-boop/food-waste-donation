@@ -2,6 +2,7 @@
 // donor/edit-profile.php
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/location-picker.php';
 
 require_login();
 $uid = current_user_id();
@@ -9,12 +10,10 @@ $uid = current_user_id();
 $stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = :u");
 $stmt->execute([':u' => $uid]);
 $u = $stmt->fetch();
-
 $errors = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
-
     $name    = post('name');
     $phone   = post('phone');
     $address = post('address');
@@ -24,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $lat     = post('latitude');
     $lng     = post('longitude');
 
-    if ($name === '')  $errors[] = 'Name is required.';
-    if ($city === '')  $errors[] = 'City is required.';
+    if ($name === '') $errors[] = 'Name is required.';
+    if ($city === '') $errors[] = 'City is required.';
 
     $photoName = $u['profile_photo'];
     if (!empty($_FILES['profile_photo']['name'])) {
@@ -43,14 +42,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':lng' => $lng !== '' ? (float)$lng : null,
                 ':ph' => $photoName, ':u' => $uid,
             ]);
-
         $_SESSION['name'] = $name;
         set_flash('success', 'Profile updated.');
         redirect(BASE_URL . 'donor/profile.php');
     }
 }
 
-// ---- NOW safe to output HTML ----
 $pageTitle = 'Edit Profile';
 require_once __DIR__ . '/../includes/dashboard-header.php';
 ?>
@@ -59,7 +56,7 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
     <div class="toast toast-error"><?php foreach ($errors as $e): ?><?= sanitize($e) ?><br><?php endforeach; ?></div>
 <?php endif; ?>
 
-<form method="post" enctype="multipart/form-data" class="card" style="max-width:720px">
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:760px">
     <?= csrf_field() ?>
 
     <div class="form-row">
@@ -75,24 +72,24 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
 
     <div class="form-group">
         <label class="form-label">Address</label>
-        <textarea name="address" class="form-control" rows="2"><?= sanitize($u['address']) ?></textarea>
+        <textarea name="address" id="address" class="form-control" rows="2"><?= sanitize($u['address']) ?></textarea>
     </div>
 
     <div class="form-row">
         <div class="form-group">
             <label class="form-label">City *</label>
-            <input type="text" name="city" class="form-control" required value="<?= sanitize($u['city']) ?>">
+            <input type="text" name="city" id="city" class="form-control" required value="<?= sanitize($u['city']) ?>">
         </div>
         <div class="form-group">
             <label class="form-label">Area</label>
-            <input type="text" name="area" class="form-control" value="<?= sanitize($u['area']) ?>">
+            <input type="text" name="area" id="area" class="form-control" value="<?= sanitize($u['area']) ?>">
         </div>
     </div>
 
     <div class="form-row">
         <div class="form-group">
             <label class="form-label">Pincode</label>
-            <input type="text" name="pincode" class="form-control" value="<?= sanitize($u['pincode']) ?>">
+            <input type="text" name="pincode" id="pincode" class="form-control" value="<?= sanitize($u['pincode']) ?>">
         </div>
         <div class="form-group">
             <label class="form-label">Profile Photo</label>
@@ -100,29 +97,16 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
         </div>
     </div>
 
-    <input type="hidden" name="latitude"  value="<?= sanitize($u['latitude']) ?>">
-    <input type="hidden" name="longitude" value="<?= sanitize($u['longitude']) ?>">
-
-    <div class="form-group">
-        <button type="button" class="btn btn-outline btn-sm" onclick="detectLocation()">📍 Update GPS location</button>
-        <span id="geo-status" class="text-muted"></span>
-    </div>
+    <?php render_location_picker([
+        'city'      => $u['city'],
+        'area'      => $u['area'],
+        'pincode'   => $u['pincode'],
+        'latitude'  => $u['latitude'],
+        'longitude' => $u['longitude'],
+    ]); ?>
 
     <button class="btn btn-primary">Save Changes</button>
     <a href="<?= BASE_URL ?>donor/profile.php" class="btn btn-outline">Cancel</a>
 </form>
-
-<script>
-function detectLocation() {
-    if (!navigator.geolocation) return;
-    const s = document.getElementById('geo-status');
-    s.textContent = 'Detecting…';
-    navigator.geolocation.getCurrentPosition(p => {
-        document.querySelector('input[name="latitude"]').value  = p.coords.latitude.toFixed(6);
-        document.querySelector('input[name="longitude"]').value = p.coords.longitude.toFixed(6);
-        s.textContent = '✅ Updated';
-    }, e => s.textContent = '⚠️ ' + e.message);
-}
-</script>
 
 <?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
