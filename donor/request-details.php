@@ -66,32 +66,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(BASE_URL . 'donor/request-details.php?id=' . $rid);
     }
 
-    if ($action === 'mark_delivered') {
-        // Donor must upload delivery proof
+       if ($action === 'mark_delivered') {
         $proof = upload_image($_FILES['proof_image'] ?? null, PROOF_UPLOAD, PROOF_UPLOAD_URL);
         if (!$proof) {
             set_flash('error', 'Please upload a delivery proof photo.');
         } else {
-            $pdo->prepare("INSERT INTO delivery_proofs
-                (donation_id, request_id, uploaded_by, uploaded_by_role, proof_image, delivery_note)
-                VALUES (:d,:r,:u,'donor',:img,:n)")
-                ->execute([
-                    ':d' => $r['donation_id'], ':r' => $rid, ':u' => $uid,
-                    ':img' => $proof, ':n' => post('delivery_note'),
+            try {
+                $pdo->beginTransaction();
+
+                // 1. Create deliveries row first
+                $pdo->prepare("
+                    INSERT INTO deliveries (donation_id, request_id, method, status, delivered_at, notes)
+                    VALUES (:d, :r, 'self', 'delivered', NOW(), :note)
+                ")->execute([
+                    ':d'    => $r['donation_id'],
+                    ':r'    => $rid,
+                    ':note' => post('delivery_note'),
+                ]);
+                $deliveryId = (int)$pdo->lastInsertId();
+
+                // 2. Insert delivery proof with delivery_id
+                $pdo->prepare("
+                    INSERT INTO delivery_proofs
+                      (donation_id, request_id, delivery_id, uploaded_by, uploaded_by_role, proof_image, delivery_note)
+                    VALUES (:d, :r, :del, :u, 'donor', :img, :note)
+                ")->execute([
+                    ':d'    => $r['donation_id'],
+                    ':r'    => $rid,
+                    ':del'  => $deliveryId,
+                    ':u'    => $uid,
+                    ':img'  => $proof,
+                    ':note' => post('delivery_note'),
                 ]);
 
-            $pdo->prepare("UPDATE food_donations SET status='delivered' WHERE donation_id=:d")
-                ->execute([':d' => $r['donation_id']]);
-            $pdo->prepare("UPDATE food_requests SET status='completed' WHERE request_id=:r")
-                ->execute([':r' => $rid]);
+                $pdo->prepare("UPDATE food_donations SET status='delivered' WHERE donation_id=:d")
+                    ->execute([':d' => $r['donation_id']]);
+                $pdo->prepare("UPDATE food_requests SET status='completed' WHERE request_id=:r")
+                    ->execute([':r' => $rid]);
 
-            notify($pdo, $r['recipient_id'], '🍱 Food Delivered',
-                   'Food has been delivered. Please confirm receipt.', 'delivered', $r['donation_id']);
-            notify_admins($pdo, '📷 Delivery Proof Uploaded',
-                   'Donor uploaded proof for donation #' . $r['donation_id'], 'proof', $r['donation_id']);
+                $pdo->commit();
 
-            set_flash('success', 'Delivery recorded.');
-            redirect(BASE_URL . 'donor/request-details.php?id=' . $rid);
+                notify($pdo, $r['recipient_id'], '🍱 Food Delivered',
+                       'Food has been delivered. Please confirm receipt.', 'delivered', $r['donation_id']);
+                notify_admins($pdo, '📷 Delivery Proof Uploaded',
+                       'Donor uploaded proof for donation #' . $r['donation_id'], 'proof', $r['donation_id']);
+
+                set_flash('success', 'Delivery recorded.');
+                redirect(BASE_URL . 'donor/request-details.php?id=' . $rid);
+
+            } catch (Exception $ex) {
+                $pdo->rollBack();
+                set_flash('error', 'Upload failed: ' . $ex->getMessage());
+            }
         }
     }
 }
