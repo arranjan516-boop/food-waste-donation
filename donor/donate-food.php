@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/location-functions.php';
 require_once __DIR__ . '/../includes/notification-functions.php';
+require_once __DIR__ . '/../includes/location-picker.php';
 
 require_login();
 if (current_role() !== 'donor' && current_role() !== 'admin') {
@@ -237,34 +238,26 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
 
     <div class="form-group">
         <label class="form-label">Address</label>
-        <textarea name="address" class="form-control" rows="2"><?= sanitize($old['address']) ?></textarea>
+        <textarea name="address" id="address" class="form-control" rows="2"><?= sanitize($old['address']) ?></textarea>
     </div>
 
     <div class="form-row">
         <div class="form-group">
             <label class="form-label">City *</label>
-            <input type="text" name="city" class="form-control" required value="<?= sanitize($old['city']) ?>">
+            <input type="text" name="city" id="city" class="form-control" required value="<?= sanitize($old['city']) ?>">
         </div>
         <div class="form-group">
             <label class="form-label">Area</label>
-            <input type="text" name="area" class="form-control" value="<?= sanitize($old['area']) ?>">
+            <input type="text" name="area" id="area" class="form-control" value="<?= sanitize($old['area']) ?>">
         </div>
     </div>
 
-    <div class="form-row">
-        <div class="form-group">
-            <label class="form-label">Pincode *</label>
-            <input type="text" name="pincode" class="form-control" required value="<?= sanitize($old['pincode']) ?>">
-        </div>
-        <div class="form-group">
-            <label class="form-label">GPS (optional)</label>
-            <button type="button" class="btn btn-outline btn-sm" onclick="detectLocation()">📍 Use my location</button>
-            <span id="geo-status" class="text-muted"></span>
-        </div>
+    <div class="form-group">
+        <label class="form-label">Pincode *</label>
+        <input type="text" name="pincode" id="pincode" class="form-control" required value="<?= sanitize($old['pincode']) ?>">
     </div>
 
-    <input type="hidden" name="latitude"  value="<?= sanitize($old['latitude']) ?>">
-    <input type="hidden" name="longitude" value="<?= sanitize($old['longitude']) ?>">
+    <?php render_location_picker($old); ?>
 
     <h3 class="card-title" style="margin-top:24px">Food Photo *</h3>
     <div class="form-group">
@@ -312,21 +305,5 @@ require_once __DIR__ . '/../includes/dashboard-header.php';
         <a href="<?= BASE_URL ?>donor/dashboard.php" class="btn btn-outline">Cancel</a>
     </div>
 </form>
-
-<script>
-function detectLocation() {
-    const s = document.getElementById('geo-status');
-    if (!navigator.geolocation) { s.textContent = 'Not supported'; return; }
-    s.textContent = 'Detecting…';
-    navigator.geolocation.getCurrentPosition(
-        p => {
-            document.querySelector('input[name="latitude"]').value  = p.coords.latitude.toFixed(6);
-            document.querySelector('input[name="longitude"]').value = p.coords.longitude.toFixed(6);
-            s.textContent = '✅ Location captured';
-        },
-        e => s.textContent = '⚠️ ' + e.message
-    );
-}
-</script>
 
 <?php require_once __DIR__ . '/../includes/dashboard-footer.php'; ?>
